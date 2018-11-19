@@ -11,7 +11,7 @@ def load_jpeg(image_path,resize = (448,128)):
 
 
 def train_data_iterator(left_images_path,right_images_path,seg_path,depth_path,img_shape =(448,128),
-                        batch_size=5,val_ratio = 0.1,shuffle=True,augment = True):
+                        batch_size=5,val_ratio = 0.1,shuffle=True,aug = True):
     #load data
     left_img_array = [os.path.join(left_images_path,x) for x in os.listdir(left_images_path)  if os.path.splitext(x)[0][-1]=='0']
     right_img_array = [os.path.join(right_images_path,x) for x in os.listdir(right_images_path)  if os.path.splitext(x)[0][-1]=='1']
@@ -41,7 +41,7 @@ def train_data_iterator(left_images_path,right_images_path,seg_path,depth_path,i
     train_data = tf.data.Dataset.from_tensor_slices((left_img_array,right_img_array,seg_array,depth_array))
     train_data = train_data.map(lambda x,y,z,w:(load_jpeg(x,img_shape),load_jpeg(y,img_shape),load_jpeg(z,img_shape),load_jpeg(w,img_shape)))
     
-    if augment:
+    if aug:
         train_data = train_data.map(augment)
     
     if shuffle:
