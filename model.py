@@ -1,7 +1,8 @@
 import tensorflow as tf
 import tensorflow.contrib as tfc
 from utils import *
-
+import time
+import os
 
 class Seg_Depth_Model:
 
@@ -24,9 +25,9 @@ class Seg_Depth_Model:
         fusion_left = self.SPP(conv4_left)
         u_left = self.Unet(fusion_left,64)
 
-        conv4_right = self.CNN_res(self.right,filters = [32,64], True)
-        fusion_right = self.SPP(conv4_right, True)
-        u_right = self.Unet(fusion_right,64,True)
+        conv4_right = self.CNN_res(self.right,filters = [32,64],reuse = True)
+        fusion_right = self.SPP(conv4_right,reuse = True)
+        u_right = self.Unet(fusion_right,64,reuse = True)
         
         seg_res = self.CNN_res(u_left,filters = [128,64,32])
         seg_res = conv_block(tf.layers.conv2d, seg_res, 3, 1, strides=1, name='seg_res', reg=self.reg)
@@ -215,7 +216,7 @@ class Seg_Depth_Model:
                                                   self.seg: batch_seg, self.depth: batch_depth})
                 print('Step %d training loss = %.3f , time = %.2f' %(step,loss, time.time() - start_time))
                 #save model
-                saver.save(sess, saver_path, global_step=step)
+                saver.save(sess, ckpt_path, global_step=step)
                 if val_data:
                     if step % 5 == 0:
                         metrics = self.sess.run(self.loss,feed_dict={self.left: val_left, self.right: val_right,
@@ -244,6 +245,7 @@ class Seg_Depth_Model:
     
     def finetune(self, train_data,save_path,val_data = None,learning_rate = 0.005, epochs = 5,steps_per_epoch = 25):
         ckpt_path = os.path.join(save_path,'checkpoint/model.ckpt')
+        meta_path = os.path.join(save_path,'checkpoint/model.ckpt.meta')
         saver = tf.train.Saver(max_to_keep=5,keep_checkpoint_every_n_hours = 2)
         
         saver = tf.train.import_meta_graph(meta_path)
@@ -275,7 +277,7 @@ class Seg_Depth_Model:
                                                   seg_img: batch_seg, depth_img: batch_depth})
                 print('Step %d training loss = %.3f , time = %.2f' %(step,loss, time.time() - start_time))
                 #save model
-                saver.save(sess, saver_path, global_step=step)
+                saver.save(sess, ckpt_path, global_step=step)
                 if val_data:
                     if step % 5 == 0:
                         metrics = self.sess.run(loss,feed_dict={left_img: val_left, right_img: val_right,
@@ -284,4 +286,4 @@ class Seg_Depth_Model:
         
 if __name__ == '__main__':
     with tf.Session() as sess:
-        model = Model(sess)
+        model = Seg_Depth_Model(sess)
