@@ -83,9 +83,9 @@ def augment(left_input_img,right_input_img,seg_img,depth_img,
     right_input_img = tf.image.per_image_standardization(right_input_img)
     seg_img = tf.image.per_image_standardization(seg_img)
     
-    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_hue(left_input_img,right_input_img,seg_img,depth_img, hue_delta)
-    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_brightness(left_input_img,right_input_img,seg_img,depth_img, brightness)
-    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_saturation(left_input_img,right_input_img,seg_img,depth_img, lsaturation,usaturation)       
+    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_hue([left_input_img,right_input_img,seg_img,depth_img], hue_delta)
+    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_brightness([left_input_img,right_input_img,seg_img,depth_img], brightness)
+    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_saturation([left_input_img,right_input_img,seg_img,depth_img], lsaturation,usaturation)       
     
     left_input_img,right_input_img,seg_img,depth_img = projective_random_transform(left_input_img,right_input_img,seg_img,depth_img,projective_transform_angle,img_size)
     
