@@ -242,7 +242,7 @@ class Seg_Depth_Model:
             
         return seg_predict,depth_predict
     
-    def finetune(self, train_data,val_data = None,learning_rate = 0.005, epochs = 5,steps_per_epoch = 25,save_path):
+    def finetune(self, train_data,save_path,val_data = None,learning_rate = 0.005, epochs = 5,steps_per_epoch = 25):
         ckpt_path = os.path.join(save_path,'checkpoint/model.ckpt')
         saver = tf.train.Saver(max_to_keep=5,keep_checkpoint_every_n_hours = 2)
         

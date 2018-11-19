@@ -2,9 +2,6 @@ from __future__ import print_function
 import argparse
 import os
 import tensorflow as tf
-import numpy as np
-import time
-import math
 from model import *
 
 parser = argparse.ArgumentParser()
@@ -53,10 +50,10 @@ def main():
                                                  batch_size=batch_size,val_ratio = val_ratio,shuffle=True,augment = True)
         if not pre_flag:
             model.build_model()
-            model.train(train_data,val_data = val_data,learning_rate = learning_rate, epochs = 5,steps_per_epoch = 25,save_path,retrain = retrain)
-            model.train(train_data,val_data = val_data,learning_rate = learning_rate/5, epochs = 5,steps_per_epoch = 25,save_path,retrain = True)
+            model.train(train_data,val_data = val_data,learning_rate = learning_rate, epochs = 5,steps_per_epoch = 25,save_path = save_weights_path)
+            model.train(train_data,val_data = val_data,learning_rate = learning_rate/5, epochs = 5,steps_per_epoch = 25,save_path = save_weights_path,retrain = True)
         elif finetune:
-            model.finetune(train_data,val_data = val_data,learning_rate = learning_rate, epochs = 5,steps_per_epoch = 25,save_path)
+            model.finetune(train_data,val_data = val_data,learning_rate = learning_rate,save_path = save_weights_path , epochs = 5,steps_per_epoch = 25)
         else:
             img_data = predict_data_iterator(left_images_path,right_images_path,img_shape = input_shape,batch_size=1)
             seg_imgs,depth_imgs = model.predict(img_data,load_path = save_weights_path)
