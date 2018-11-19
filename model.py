@@ -278,8 +278,8 @@ class Seg_Depth_Model:
                 saver.save(sess, saver_path, global_step=step)
                 if val_data:
                     if step % 5 == 0:
-                        metrics = self.sess.run(loss,feed_dict={self.left: val_left, self.right: val_right,
-                                                                     self.seg: val_seg, self.depth: val_depth})
+                        metrics = self.sess.run(loss,feed_dict={left_img: val_left, right_img: val_right,
+                                                                     seg_img: val_seg, depth_img: val_depth})
                         print('Step %d metrics = %.3f ,training loss = %.3f' %(step, metrics, loss))
         
 if __name__ == '__main__':
