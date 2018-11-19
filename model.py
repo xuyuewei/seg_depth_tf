@@ -12,14 +12,11 @@ class Seg_Depth_Model:
         self.batch_size = batch_size
         self.sess = sess
 
-        self.build_model()
-
-
     def build_model(self):
-        self.left = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3])
-        self.right = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3])
-        self.seg = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3])
-        self.depth = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3])
+        self.left = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3],name= 'left_img')
+        self.right = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3],name= 'right_img')
+        self.seg = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3],name= 'seg_img')
+        self.depth = tf.placeholder(tf.float32, shape=[self.batch_size, self.height, self.weight, 3],name= 'depth_img')
         
         self.image_size_tf = tf.shape(self.left)[1:3]
 
@@ -39,17 +36,14 @@ class Seg_Depth_Model:
         depth_stack = self.stackedhourglass('2d',merge)
         depth_stack = conv_block(tf.layers.conv2d, depth_stack, 3, 1, strides=1, name='depth_stack', reg=self.reg)
         
-        #tf.add_to_collection("seg_res", seg_res)
-        #tf.add_to_collection("depth_stack", depth_stack)
-    
         #print(self.disps.shape)
         self.loss = self.smooth_l1_loss(seg_res, self.depth) + self.dice_loss(seg_res,self.seg)
         
-        RMSProp_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate0)
-        self.train_RMSProp = RMSProp_optimizer.minimize(self.loss)
+        tf.add_to_collection("cseg_res", seg_res)
+        tf.add_to_collection("cdepth_stack", depth_stack)
+        tf.add_to_collection("closs", self.loss)
         
-        Adam_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate1)
-        self.train_Adam = Adam_optimizer.minimize(self.loss)
+
         
         try:
           self.sess.run(tf.global_variables_initializer())
@@ -198,11 +192,14 @@ class Seg_Depth_Model:
         ckpt_path = os.path.join(save_path,'checkpoint/model.ckpt')
         saver = tf.train.Saver(max_to_keep=5,keep_checkpoint_every_n_hours = 2)
         
-        train_optimizer = self.train_RMSProp
         if retrain:
-            train_optimizer = self.train_Adam
-            learning_rate = learning_rate/5
-        if not val_data:
+            Adam_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            train_optimizer = Adam_optimizer.minimize(self.loss)
+        else:
+            RMSProp_optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+            train_optimizer = RMSProp_optimizer.minimize(self.loss)
+        
+        if val_data:
             next_val_data = val_data.get_next()
             val_left, val_right,val_seg, val_depth = self.sess.run(next_val_data)
             
@@ -219,21 +216,21 @@ class Seg_Depth_Model:
                 print('Step %d training loss = %.3f , time = %.2f' %(step,loss, time.time() - start_time))
                 #save model
                 saver.save(sess, saver_path, global_step=step)
-                if not val_data:
+                if val_data:
                     if step % 5 == 0:
                         metrics = self.sess.run(self.loss,feed_dict={self.left: val_left, self.right: val_right,
                                                                      self.seg: val_seg, self.depth: val_depth})
                         print('Step %d metrics = %.3f ,training loss = %.3f' %(step, metrics, loss))
         
     def predict(self,img_data,load_path):
-        meta_path = os.path.join(save_path,'checkpoint/model.ckpt.meta')
-        ckpt_path = os.path.join(save_path,'checkpoint/model.ckpt')
+        meta_path = os.path.join(load_path,'checkpoint/model.ckpt.meta')
+        ckpt_path = os.path.join(load_path,'checkpoint/model.ckpt')
         saver = tf.train.import_meta_graph(meta_path)
-        saver.restore(self.sess, model_path) 
+        saver.restore(self.sess, ckpt_path) 
         
         graph = tf.get_default_graph()
-        seg_res = graph.get_tensor_by_name('seg_res:0')
-        depth_stack = graph.get_tensor_by_name('constack:0')
+        seg_res = graph.get_collection('cseg_res')
+        depth_stack = graph.get_collection('cdepth_stack')
         seg_predict = []
         depth_predict = []
         for b in img_data:
@@ -244,7 +241,47 @@ class Seg_Depth_Model:
             depth_predict.append(depth)
             
         return seg_predict,depth_predict
-
+    
+    def finetune(self, train_data,val_data = None,learning_rate = 0.005, epochs = 5,steps_per_epoch = 25,save_path):
+        ckpt_path = os.path.join(save_path,'checkpoint/model.ckpt')
+        saver = tf.train.Saver(max_to_keep=5,keep_checkpoint_every_n_hours = 2)
+        
+        saver = tf.train.import_meta_graph(meta_path)
+        saver.restore(self.sess, ckpt_path) 
+        
+        graph = tf.get_default_graph()
+        loss = graph.get_collection('closs')
+        left_img = graph.get_tensor_by_name('left_img:0')
+        right_img = graph.get_tensor_by_name('right_img:0')
+        seg_img = graph.get_tensor_by_name('seg_img:0')
+        depth_img = graph.get_tensor_by_name('depth_img:0')
+        
+        Adam_optimizer = tf.train.AdamOptimizer(learning_rate= learning_rate)
+        train_Adam = Adam_optimizer.minimize(loss)
+        
+        if val_data:
+            next_val_data = val_data.get_next()
+            val_left, val_right,val_seg, val_depth = self.sess.run(next_val_data)
+            
+        start_time = time.time()
+        for epoch in range(1, epochs+1):  
+            for step in range(1,steps_per_epoch):
+                next_batch_data = train_data.get_next()
+                
+                batch_left, batch_right, batch_seg, batch_depth = self.sess.run(next_batch_data)
+                       
+                _,loss = self.sess.run([train_Adam, loss],
+                                       feed_dict={left_img: batch_left, right_img: batch_right,
+                                                  seg_img: batch_seg, depth_img: batch_depth})
+                print('Step %d training loss = %.3f , time = %.2f' %(step,loss, time.time() - start_time))
+                #save model
+                saver.save(sess, saver_path, global_step=step)
+                if val_data:
+                    if step % 5 == 0:
+                        metrics = self.sess.run(loss,feed_dict={self.left: val_left, self.right: val_right,
+                                                                     self.seg: val_seg, self.depth: val_depth})
+                        print('Step %d metrics = %.3f ,training loss = %.3f' %(step, metrics, loss))
+        
 if __name__ == '__main__':
     with tf.Session() as sess:
         model = Model(sess)

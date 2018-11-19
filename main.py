@@ -16,10 +16,10 @@ parser.add_argument("--input_shape", type=int , default = (448,128))
     
 parser.add_argument("--epochs", type = int, default = 5 )
 parser.add_argument("--val_ratio", type = float, default = 0.1 )
-parser.add_argument("--retrain", type = bool, default = False )
 parser.add_argument("--predict", type = bool, default = False )
+parser.add_argument("--finetune", type = bool, default = False )
 parser.add_argument("--batch_size", type = int, default = 2 )
-    
+parser.add_argument("--learning_rate", type = int, default = 0.005 )
 args = parser.parse_args()
     
 images_path = args.images_path
@@ -28,12 +28,13 @@ depth_path = args.depth_path
 batch_size = args.batch_size
 input_shape = args.input_shape
 val_ratio = args.val_ratio
+learning_rate = args.learning_rate
 pre_flag = args.predict
+finetune = args.finetune
 
 save_weights_path = os.path.join(args.save_weights_path, 'tf_seg_depth_model')
 output_path = args.save_weights_path
 epochs = args.epochs
-retrain = args.retrain
     
 
 def main():
@@ -50,8 +51,12 @@ def main():
             else:
                 train_data = train_data_iterator(images_path,images_path,seg_path,depth_path,img_shape =input_shape,
                                                  batch_size=batch_size,val_ratio = val_ratio,shuffle=True,augment = True)
-        
-            model.train(train_data,val_data = val_data,learning_rate = 0.005, epochs = 5,steps_per_epoch = 25,save_path,retrain = retrain)
+        if not pre_flag:
+            model.build_model()
+            model.train(train_data,val_data = val_data,learning_rate = learning_rate, epochs = 5,steps_per_epoch = 25,save_path,retrain = retrain)
+            model.train(train_data,val_data = val_data,learning_rate = learning_rate/5, epochs = 5,steps_per_epoch = 25,save_path,retrain = True)
+        elif finetune:
+            model.finetune(train_data,val_data = val_data,learning_rate = learning_rate, epochs = 5,steps_per_epoch = 25,save_path)
         else:
             img_data = predict_data_iterator(left_images_path,right_images_path,img_shape = input_shape,batch_size=1)
             seg_imgs,depth_imgs = model.predict(img_data,load_path = save_weights_path)
@@ -59,6 +64,5 @@ def main():
                 tf.io.write_file(os.path.join(output_path,'seg'+str(i)+'.png'),seg)
                 tf.io.write_file(os.path.join(output_path,'depth'+str(i)+'.png'),depth)
 
-            
 if __name__ == '__main__':
    main()
