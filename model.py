@@ -279,7 +279,7 @@ class Seg_Depth_Model:
                 if val_data:
                     if step % 5 == 0:
                         metrics = self.sess.run(loss,feed_dict={left_img: val_left, right_img: val_right,
-                                                                     seg_img: val_seg, depth_img: val_depth})
+                                                                seg_img: val_seg, depth_img: val_depth})
                         print('Step %d metrics = %.3f ,training loss = %.3f' %(step, metrics, loss))
         
 if __name__ == '__main__':
