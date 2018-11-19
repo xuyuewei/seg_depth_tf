@@ -6,10 +6,10 @@
 As an example, use the following command to train a seg_depth model on your dataset
 
 ```
-python main.py --save_weights_path '' \
-               --images_path '' \
-               --seg_path '' \
-               --depth_path '' \
+python main.py --save_weights_path '/home/xdjf/xuyuewei' \
+               --images_path '/home/xdjf/xuyuewei/training/image' \
+               --seg_path '/home/xdjf/xuyuewei/training/semantic_rgb' \
+               --depth_path '/home/xdjf/xuyuewei/training/disp' \
                --epochs 10 \
                --val_ratio 0.1 \
                --batch_size 5 \
@@ -19,10 +19,10 @@ As another example, use the following command to finetune a seg_depth
 
 ### Finetune
 ```
-python main.py --save_weights_path '' \
-               --images_path '' \
-               --seg_path '' \
-               --depth_path '' \
+python main.py --save_weights_path '/home/xdjf/xuyuewei' \
+               --images_path '/home/xdjf/xuyuewei/training/image' \
+               --seg_path '/home/xdjf/xuyuewei/training/semantic_rgb' \
+               --depth_path '/home/xdjf/xuyuewei/training/disp' \
                --epochs 10 \
                --val_ratio 0.1 \
                --batch_size 5 \
@@ -33,7 +33,7 @@ python main.py --save_weights_path '' \
 Use the following command to predict on test data
 
 ```
-python main.py --save_weights_path '' \
+python main.py --save_weights_path '/home/xdjf/xuyuewei' \
                --images_path '' \
                --epochs 10 \
                --val_ratio 0.1 \
