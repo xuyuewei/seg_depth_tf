@@ -1,5 +1,5 @@
 # seg_depth_tf
-###segmentation and depth_estimation
+### Segmentation and Depth_estimation
 
 
 ### Train
@@ -16,7 +16,8 @@ python main.py --save_weights_path '' \
                --learning_rate 0.005
 ```
 As another example, use the following command to finetune a seg_depth
-###Finetune
+
+### Finetune
 ```
 python main.py --save_weights_path '' \
                --images_path '' \
