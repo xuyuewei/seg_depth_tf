@@ -1,166 +1,99 @@
 import tensorflow as tf
+import tensorflow.contrib as tfc
 import os
 import numpy as np
+import cv2 as cv
 
-def load_jpeg(image_path,resize = (448,128)):
+def load_jpeg(image_path,resize = (128,448)):
     image = tf.read_file(image_path)
-    image = tf.image.decode_jpeg(image)
-    image = tf.image.resize_images(image, resize,align_corners=True,method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    image = tf.image.decode_jpeg(image, channels=3)
     image = tf.cast(image, tf.float32)
+    image = tf.image.resize_images(image, resize,align_corners=True,method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+    
     return image
 
+def cvload_img(image_path,resize = (448,128)):
+    image = cv.imread(image_path)
+    image = cv.resize(image,(resize[1],resize[0]), interpolation = cv.INTER_LINEAR)
+    return image
 
-def train_data_iterator(left_images_path,right_images_path,seg_path,depth_path,img_shape =(448,128),
-                        batch_size=5,val_ratio = 0.1,shuffle=True,aug = True):
-    #load data
-    left_img_array = [os.path.join(left_images_path,x) for x in os.listdir(left_images_path)  if os.path.splitext(x)[0][-1]=='0']
-    right_img_array = [os.path.join(right_images_path,x) for x in os.listdir(right_images_path)  if os.path.splitext(x)[0][-1]=='1']
-    seg_array = [os.path.join(seg_path,x) for x in os.listdir(seg_path)]
-    depth_array = [os.path.join(depth_path,x) for x in os.listdir(depth_path)]
+def img_path_array(path,val_ratio = 0.1,pattern = ''):
+    if pattern == '':
+        path_array = [os.path.join(path,x) for x in os.listdir(path)]
+        if val_ratio:
+            train_path_array,val_path_array = train_val_split(path_array,val_ratio)
+            return train_path_array,val_path_array
+        else:
+            return path_array
+    else:
+        path_array = [os.path.join(path,x) for x in os.listdir(path)  if os.path.splitext(x)[0][-1]==pattern]
+        if val_ratio:
+            train_path_array,val_path_array = train_val_split(path_array,val_ratio)
+            return train_path_array,val_path_array
+        else:
+            return path_array
     
-    if val_ratio:
-        num_of_samples = len(left_img_array)
-        
-        val_left_img_array = left_img_array[:np.int(val_ratio*num_of_samples)]
-        val_right_img_array = right_img_array[:np.int(val_ratio*num_of_samples)]
-        val_seg_array = seg_array[:np.int(val_ratio*num_of_samples)]
-        val_depth_array = depth_array[:np.int(val_ratio*num_of_samples)]
-        
-        left_img_array = left_img_array[np.int(val_ratio*num_of_samples):]
-        right_img_array = right_img_array[np.int(val_ratio*num_of_samples):]
-        seg_array = seg_array[np.int(val_ratio*num_of_samples):]
-        depth_array = depth_array[np.int(val_ratio*num_of_samples):]
-        
-        num_of_val_samples = len(val_left_img_array)
-        val_data = tf.data.Dataset.from_tensor_slices((val_left_img_array,val_right_img_array,val_seg_array,val_depth_array))
-        val_data = val_data.map(lambda x,y,z,w:(load_jpeg(x,img_shape),load_jpeg(y,img_shape),load_jpeg(z,img_shape),load_jpeg(w,img_shape)))
-        
-        val_data = val_data.batch(num_of_val_samples)
-        val_data_iterator = val_data.make_initializable_iterator()
+def train_val_split(images_path_array,val_ratio = 0.1):
+    num_of_samples = len(images_path_array)
+    val_rat = np.int(val_ratio*num_of_samples)
+    val_img_array = np.array(images_path_array[:val_rat])
+    train_img_array = np.array(images_path_array[:val_rat])
+    return train_img_array,val_img_array
+    
+def load_batch_img(images_path_array,random_index,img_shape =(128,448),ran_aug = None):
+    
+    if ran_aug != None:
+        batch_img = np.array(map(lambda x:(augment(load_jpeg(x,img_shape),ran_aug)),images_path_array[random_index]))
+    else:
+        batch_img = np.array(map(lambda x:load_jpeg(x,img_shape),images_path_array[random_index]))
+    return batch_img
 
-    train_data = tf.data.Dataset.from_tensor_slices((left_img_array,right_img_array,seg_array,depth_array))
-    train_data = train_data.map(lambda x,y,z,w:(load_jpeg(x,img_shape),load_jpeg(y,img_shape),load_jpeg(z,img_shape),load_jpeg(w,img_shape)))
+def augment(input_img,random_number,
+            adjust_contrast = True,
+            angle = 90,
+            scale = 0.3,
+            projective_transform_angle = 30,
+            img_size = [128,448],
+            width_shift_range=0.4,  # Randomly translate the image horizontally
+            height_shift_range=0.3):  # Randomly translate the image vertically
     
-    if aug:
-        train_data = train_data.map(augment)
+    np_ran = random_number*2-1
+    half_size = (img_size[1]//2,img_size[0]//2)
+    quar_size = (img_size[1]//4,img_size[0]//4)
+    eith_size = (img_size[1]//8,img_size[0]//8)
+    #trans by random
+    M_trans = np.float32([[1,0,np.int(img_size[1]*width_shift_range*np_ran)],
+                                      [0,1,np.int(img_size[0]*height_shift_range*np_ran)]])
+    trans_img = cv.warpAffine(input_img,M_trans,(img_size[1],img_size[0]),borderMode = cv.BORDER_REFLECT)
+    #scale nad rotate by random
+    M_rot = cv.getRotationMatrix2D((half_size[0]-np.int(eith_size[0]*np_ran,half_size[1]-eith_size[1]*np_ran),
+                                    np.int(angle*random_number),1))
+    scale_rot_img = cv.warpAffine(trans_img,M_rot,(img_size[1],img_size[0]),borderMode = cv.BORDER_REFLECT)
     
-    if shuffle:
-        train_data = train_data.shuffle(num_of_samples)
-    #repeat data for all epochs indefinitely
-    train_data = train_data.repeat()
-    train_data = train_data.prefetch(buffer_size=batch_size * 10).batch(batch_size)
+    random_number = 1-random_number
+    np_ran = random_number*2-1
+    #affine_transform
+    apts1 = np.float32([[quar_size[0],quar_size[1]],[3*quar_size[0],quar_size[1]],[quar_size[0],3*quar_size[1]]])
+    apts2 = np.float32([[quar_size[0]+np.int(np_ran*eith_size[0]),quar_size[1]-np.int(np_ran*eith_size[1])],
+                        [3*quar_size[0]-np.int(np_ran*eith_size[0]),quar_size[1]+np.int(np_ran*eith_size[1])],
+                        [quar_size[0]+np.int(np_ran*eith_size[0]),3*quar_size[1]-np.int(np_ran*eith_size[1])]])
+    M_affine = cv.getAffineTransform(apts1,apts2)
+    affine_img = cv.warpAffine(scale_rot_img,M_affine,(img_size[1],img_size[0]),borderMode = cv.BORDER_REFLECT)
+    #perspective_transform
+    pts1 = np.float32([[quar_size[0],quar_size[1]],[3*quar_size[0],quar_size[1]],[quar_size[0],3*quar_size[1]],[3*quar_size[0],3*quar_size[1]]])
+    pts2 = np.float32([[quar_size[0]-np.int(np_ran*eith_size[0]),quar_size[1]-np.int(np_ran*eith_size[1])],
+                       [3*quar_size[0]+np.int(np_ran*eith_size[0]),quar_size[1]-np.int(np_ran*eith_size[1])],
+                       [quar_size[0]-np.int(np_ran*eith_size[0]),3*quar_size[1]+np.int(np_ran*eith_size[1])],
+                       [3*quar_size[0]+np.int(np_ran*eith_size[0]),3*quar_size[1]]+np.int(np_ran*eith_size[1])])
+    M_perspective = cv.getPerspectiveTransform(pts1,pts2)
+    perspective_img = cv.warpPerspective(affine_img,M_perspective,(img_size[1],img_size[0]),borderMode = cv.BORDER_REFLECT)
     
-    train_data_iterator = train_data.make_initializable_iterator()
-    
-    if val_ratio:
-        return train_data_iterator,val_data_iterator
-    return train_data_iterator
+    #adjust contrast
+    if adjust_contrast:
+        perspective_img = perspective_img*(0.6+random_number*1.5).astype(np.uint16)
+    return perspective_img
 
-def predict_data_iterator(left_images_path,right_images_path,img_shape =(448,128),batch_size=1):
-    #load data
-    left_img_array = [os.path.join(left_images_path,x) for x in os.listdir(left_images_path)  if os.path.splitext(x)[0][-1]=='0']
-    right_img_array = [os.path.join(right_images_path,x) for x in os.listdir(right_images_path)  if os.path.splitext(x)[0][-1]=='1']
-    
-    predict_data = tf.data.Dataset.from_tensor_slices((left_img_array,right_img_array))
-    predict_data = predict_data.map(lambda x,y:(load_jpeg(x,img_shape),load_jpeg(y,img_shape)))
-    predict_data = predict_data.batch(batch_size)
-    
-    predict_data_iterator = predict_data.make_initializable_iterator()
-    return predict_data_iterator
-
-def augment(left_input_img,right_input_img,seg_img,depth_img,
-            hue_delta = 0.2,  # Adjust the hue of an RGB image by random factor
-            brightness = 0.3,
-            lsaturation = 0.1,
-            usaturation = 0.3,
-            angle = 60,
-            projective_transform_angle = 60,
-            img_size = [448,128],
-            width_shift_range=0.3,  # Randomly translate the image horizontally
-            height_shift_range=0.2):  # Randomly translate the image vertically
-    
-    left_input_img = tf.image.per_image_standardization(left_input_img)
-    right_input_img = tf.image.per_image_standardization(right_input_img)
-    seg_img = tf.image.per_image_standardization(seg_img)
-    
-    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_hue([left_input_img,right_input_img,seg_img,depth_img], hue_delta)
-    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_brightness([left_input_img,right_input_img,seg_img,depth_img], brightness)
-    left_input_img,right_input_img,seg_img,depth_img = tf.image.random_saturation([left_input_img,right_input_img,seg_img,depth_img], lsaturation,usaturation)       
-    
-    left_input_img,right_input_img,seg_img,depth_img = projective_random_transform(left_input_img,right_input_img,seg_img,depth_img,projective_transform_angle,img_size)
-    
-    left_input_img,right_input_img,seg_img,depth_img = shift_img(left_input_img,right_input_img,seg_img,depth_img, width_shift_range, height_shift_range,img_size)
-    
-    return left_input_img,right_input_img,seg_img,depth_img
-    
-    
-def shift_img(left_input_img,right_input_img,seg_img,depth_img, width_shift_range, height_shift_range,img_size):
-    """This fn will perform the horizontal or vertical shift"""
-    img_shape = img_size
-    if width_shift_range:
-        width_shift_range = tf.random_uniform([], -width_shift_range * img_shape[1],
-                                              width_shift_range * img_shape[1])
-        if height_shift_range:
-            height_shift_range = tf.random_uniform([],-height_shift_range * img_shape[0],
-                                                   height_shift_range * img_shape[0])
-      # Translate all
-    left_input_img = tf.contrib.image.translate(left_input_img,[width_shift_range, height_shift_range])
-    right_input_img = tf.contrib.image.translate(right_input_img,[width_shift_range, height_shift_range])
-    seg_img = tf.contrib.image.translate(seg_img,[width_shift_range, height_shift_range])
-    depth_img = tf.contrib.image.translate(depth_img,[width_shift_range, height_shift_range])
-        
-    return left_input_img,right_input_img,seg_img,depth_img
-
-def rot_randomangle(left_input_img,right_input_img,seg_img,depth_img, angle = 45):
-    if angle:
-        random_angle = tf.random_uniform([], 0.2, 1.0)*3.14*angle/180
-        left_input_img = tf.contrib.image.rotate(left_input_img,random_angle)
-        right_input_img = tf.contrib.image.rotate(right_input_img,random_angle)
-        seg_img = tf.contrib.image.rotate(seg_img,random_angle)
-        depth_img = tf.contrib.image.rotate(depth_img,random_angle)
-        
-    return left_input_img,right_input_img,seg_img,depth_img
-
-def projective_random_transform(left_input_img,right_input_img,seg_img,depth_img,angle = 45,img_size = (448,128)):
-    if angle:
-        random_angle = tf.random_uniform([], 0.5, 1.0)*angle
-        transform = tf.contrib.image.angles_to_projective_transforms(random_angle,img_size[0],img_size[1])
-        left_input_img = tf.contrib.image.transform(left_input_img,transform)
-        right_input_img = tf.contrib.image.transform(right_input_img,transform)
-        seg_img = tf.contrib.image.transform(seg_img,transform)
-        depth_img = tf.contrib.image.transform(depth_img,transform)
-    return left_input_img,right_input_img,seg_img,depth_img
-
-def flipran_img(left_input_img,right_input_img,seg_img,depth_img):
-    
-    flip_prob = tf.random_uniform([], 0.0, 1.0)
-    
-    left_input_img= tf.cond(tf.less(flip_prob, 0.3),
-                        lambda: (tf.image.flip_up_down(tf.image.flip_left_right(left_input_img)),
-                                 lambda: (tf.cond(tf.less(flip_prob,0.6),
-                                                  lambda:(tf.image.flip_up_down(left_input_img)),
-                                                  lambda:(tf.image.flip_left_right(left_input_img))))))
-    right_input_img= tf.cond(tf.less(flip_prob, 0.3),
-                        lambda: (tf.image.flip_up_down(tf.image.flip_left_right(right_input_img)),
-                                 lambda: (tf.cond(tf.less(flip_prob,0.6),
-                                                  lambda:(tf.image.flip_up_down(right_input_img)),
-                                                  lambda:(tf.image.flip_left_right(right_input_img))))))
-    seg_img= tf.cond(tf.less(flip_prob, 0.3),
-                        lambda: (tf.image.flip_up_down(tf.image.flip_left_right(seg_img)),
-                                 lambda: (tf.cond(tf.less(flip_prob,0.6),
-                                                  lambda:(tf.image.flip_up_down(seg_img)),
-                                                  lambda:(tf.image.flip_left_right(seg_img))))))
-    depth_img= tf.cond(tf.less(flip_prob, 0.3),
-                        lambda: (tf.image.flip_up_down(tf.image.flip_left_right(depth_img)),
-                                 lambda: (tf.cond(tf.less(flip_prob,0.6),
-                                                  lambda:(tf.image.flip_up_down(depth_img)),
-                                                  lambda:(tf.image.flip_left_right(depth_img))))))
-    
-    return left_input_img,right_input_img,seg_img,depth_img
-
-
-
-def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, name=None, reuse=None, reg=1e-4,
+def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=-1, name=None, reuse=None, reg=1e-4,
                apply_bn=True, apply_relu=True):
     with tf.variable_scope(name):
         conv_params = {
@@ -172,7 +105,8 @@ def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, n
             'reuse': reuse
         }
         #这里需要注意，转置卷积不能加上空洞卷积的值
-        conv_params['dilation_rate'] = dilation_rate
+        if dilation_rate >-1:
+            conv_params['dilation_rate'] = dilation_rate
         #if dilation_rate == -1:
         #    conv_params[]
         bottom = func(bottom, filters, kernel_size, strides, **conv_params)
@@ -203,9 +137,10 @@ def res_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, na
 def SPP_branch(func, bottom, pool_size, filters, kernel_size, strides=1, dilation_rate=1, name=None, reuse=None,
                reg=1e-4, apply_bn=True, apply_relu=True):
     with tf.variable_scope(name):
-        size = tf.shape(bottom)[1:3]
         bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool')
         bottom = conv_block(func, bottom, filters, kernel_size, strides, dilation_rate, 'conv', reuse, reg,
                             apply_bn, apply_relu)
-        bottom = tf.image.resize_images(bottom, size)
+        print('average_pooling_output:'+str(bottom.shape))
+        bottom = conv_block(tf.layers.conv2d_transpose, bottom, filters, kernel_size, strides=pool_size, name='spp_deconv',reuse=reuse, reg=reg)
+        print('deconv_output:' + str(bottom.shape))
     return bottom

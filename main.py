@@ -3,13 +3,14 @@ import argparse
 import os
 import tensorflow as tf
 from model import *
+from utils import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--save_weights_path", type = str,default = './')
 parser.add_argument("--images_path", type = str)
 parser.add_argument("--seg_path", type = str,default = None)
 parser.add_argument("--depth_path", type = str,default = None)
-parser.add_argument("--input_shape", type=int , default = (448,128))
+parser.add_argument("--input_shape", type=int , default = (128,448))
     
 parser.add_argument("--epochs", type = int, default = 5 )
 parser.add_argument("--val_ratio", type = float, default = 0.1 )
@@ -19,7 +20,7 @@ parser.add_argument("--retrain", type = bool, default = True )
 parser.add_argument("--shuffle", type = bool, default = True )
 parser.add_argument("--augment", type = bool, default = True )
 parser.add_argument("--batch_size", type = int, default = 2 )
-parser.add_argument("--learning_rate", type = int, default = 0.005 )
+parser.add_argument("--learning_rate", type = float, default = 0.005 )
 args = parser.parse_args()
     
 images_path = args.images_path
@@ -39,26 +40,19 @@ epochs = args.epochs
 retrain = args.retrain
 shuffle = args.shuffle
 augment = args.augment
+
 def main():
-    val_data = None
+    tf.reset_default_graph()
     config = tf.ConfigProto()
     config.gpu_options.allow_growth=True
-    with tf.Session() as sess:
+    with tf.Session(config=config) as sess:
         #create model
-        model = Seg_Depth_Model(sess,input_shape[1],input_shape[0], batch_size)
+        seg_depth = Seg_Depth_Model(sess,input_shape[0],input_shape[1], batch_size)
         if not pre_flag:
-            if val_ratio:
-                train_data,val_data = train_data_iterator(images_path,images_path,seg_path,depth_path,input_shape,
-                                                          batch_size,val_ratio,shuffle, augment)
-            else:
-                train_data = train_data_iterator(images_path,images_path,seg_path,depth_path,input_shape,
-                                                 batch_size,val_ratio,shuffle,augment)
-        if not pre_flag:
-            model.build_model()
-            model.train(train_data,save_weights_path,val_data,learning_rate, epochs,25)
-            model.train(train_data,save_weights_path,val_data,learning_rate/5, epochs,25,retrain)
+            seg_depth.train(train_data_path = [images_path,images_path,seg_path,depth_path],save_weights_path,batch_size,val_ratio,learning_rate, epochs,)
+            seg_depth.train(train_data_path = [images_path,images_path,seg_path,depth_path],save_weights_path,batch_size,val_ratio,learning_rate/5, epochs,retrain)
         elif finetune:
-            model.finetune(train_data,save_weights_path,val_data,learning_rate, epochs,25)
+            seg_depth.finetune(train_data_path = [images_path,images_path,seg_path,depth_path],save_weights_path,batch_size,val_ratio,learning_rate/5, epochs,retrain)
         else:
             img_data = predict_data_iterator(left_images_path,right_images_path,input_shape,batch_size)
             seg_imgs,depth_imgs = model.predict(img_data,save_weights_path)
