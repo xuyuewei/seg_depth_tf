@@ -46,60 +46,72 @@ def train_val_split(images_path_array, val_ratio=0.1):
     return train_img_array,val_img_array
 
 
-def load_batch_img(images_path_array, random_index, img_shape=(128, 448), ran_aug=None):
+def load_batch_img(images_path_array, random_index, img_shape=(128, 448), ran_aug=None, ran_sel=0.1):
     
     if ran_aug is not None:
-        batch_img = np.array(map(lambda x: (augment(load_jpeg(x, img_shape), ran_aug)), images_path_array[random_index]))
+        batch_img = np.array(map(lambda x: (augment(load_jpeg(x, img_shape), ran_aug, ran_sel)), images_path_array[random_index]))
     else:
         batch_img = np.array(map(lambda x: load_jpeg(x, img_shape), images_path_array[random_index]))
     return batch_img
 
 
-def augment(input_img, random_number,
-            adjust_contrast=True,
-            angle=90,
+def augment(input_img, ran_degree, ran_aug,
+            adjust_brightness = False,
+            angle=180,
             img_size=(128, 448),
             width_shift_range=0.4,  # Randomly translate the image horizontally
             height_shift_range=0.3):  # Randomly translate the image vertically
 
-    np_ran = random_number*2-1
+    np_ran = ran_degree*2-1
     half_size = (img_size[1]//2, img_size[0]//2)
     quar_size = (img_size[1]//4, img_size[0]//4)
     eith_size = (img_size[1]//8, img_size[0]//8)
-    if random_number > 0.5:        # trans by random
-        M_trans = np.float32([[1, 0, np.int(img_size[1]*width_shift_range*np_ran)],
-                                          [0, 1, np.int(img_size[0]*height_shift_range*np_ran)]])
-        trans_img = cv.warpAffine(input_img, M_trans, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
-        # scale nad rotate by random
-        M_rot = cv.getRotationMatrix2D((half_size[0]-np.int(eith_size[0]*np_ran, half_size[1]-eith_size[1]*np_ran),
-                                        np.int(angle*random_number), 1))
-        input_img = cv.warpAffine(trans_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
-    else:
-        random_number = 1-random_number
-        np_ran = random_number*2-1
-        # affine_transform
-        apts1 = np.float32([[quar_size[0], quar_size[1]], [3*quar_size[0], quar_size[1]],
-                            [quar_size[0], 3*quar_size[1]]])
-        apts2 = np.float32([[quar_size[0]+np.int(np_ran*eith_size[0]), quar_size[1]-np.int(np_ran*eith_size[1])],
-                            [3*quar_size[0]-np.int(np_ran*eith_size[0]), quar_size[1]+np.int(np_ran*eith_size[1])],
-                            [quar_size[0]+np.int(np_ran*eith_size[0]), 3*quar_size[1]-np.int(np_ran*eith_size[1])]])
-        M_affine = cv.getAffineTransform(apts1, apts2)
-        affine_img = cv.warpAffine(input_img, M_affine, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+    
+    # darkness improve
+    sd = np.floor(255/np.log2(255))
+    process_img = (sd*np.log2(input_img+0.0001)).astype(np.uint8)
+    
+    # gamma enhance contrast
+    sg = np.floor(np.power(255,1.8)/255)
+    process_img = (np.power(process_img,1.8)/sg).astype(np.uint8)
+    
+    if ran_aug < 0.5:
         # perspective_transform
         pts1 = np.float32([[quar_size[0], quar_size[1]], [3*quar_size[0], quar_size[1]],
                            [quar_size[0], 3*quar_size[1]], [3*quar_size[0], 3*quar_size[1]]])
-        pts2 = np.float32([[quar_size[0]-np.int(np_ran*eith_size[0]), quar_size[1]-np.int(np_ran*eith_size[1])],
-                           [3*quar_size[0]+np.int(np_ran*eith_size[0]), quar_size[1]-np.int(np_ran*eith_size[1])],
-                           [quar_size[0]-np.int(np_ran*eith_size[0]), 3*quar_size[1]+np.int(np_ran*eith_size[1])],
-                           [3*quar_size[0]+np.int(np_ran*eith_size[0]), 3*quar_size[1]+np.int(np_ran*eith_size[1])]])
+        pts2 = np.float32([[quar_size[0]-np_ran*eith_size[0], quar_size[1]-np_ran*eith_size[1]],
+                           [3*quar_size[0]+np_ran*eith_size[0], quar_size[1]-np_ran*eith_size[1]],
+                           [quar_size[0]-np_ran*eith_size[0], 3*quar_size[1]+np_ran*eith_size[1]],
+                           [3*quar_size[0]+np_ran*eith_size[0], 3*quar_size[1]+np_ran*eith_size[1]]])
         M_perspective = cv.getPerspectiveTransform(pts1, pts2)
-        input_img = cv.warpPerspective(affine_img, M_perspective, (img_size[1], img_size[0]),
+        process_img = cv.warpPerspective(process_img, M_perspective, (img_size[1], img_size[0]),
                                        borderMode=cv.BORDER_REFLECT)
+        # scale nad rotate by random
+        M_rot = cv.getRotationMatrix2D((half_size[0]-eith_size[0]*np_ran, half_size[1]-eith_size[1]*np_ran),
+                                       angle*ran_degree, 1)
+        process_img = cv.warpAffine(process_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+    else:
+        #translate
+        M_trans = np.float32([[1, 0, img_size[1]*width_shift_range*np_ran],
+                                          [0, 1, img_size[0]*height_shift_range*np_ran]])
+        process_img = cv.warpAffine(process_img, M_trans, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+        np_ran = np_ran / 2
+        # affine_transform
+        apts1 = np.float32([[quar_size[0], quar_size[1]], [3*quar_size[0], quar_size[1]],
+                            [quar_size[0], 3*quar_size[1]]])
+        apts2 = np.float32([[quar_size[0]+np_ran*eith_size[0], quar_size[1]+np_ran*eith_size[1]],
+                            [3*quar_size[0]-np_ran*eith_size[0], quar_size[1]-np_ran*eith_size[1]],
+                            [quar_size[0]-np_ran*eith_size[0], 3*quar_size[1]-np_ran*eith_size[1]]])
+        M_affine = cv.getAffineTransform(apts1, apts2)
+        process_img = cv.warpAffine(process_img, M_affine, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+        
     
     # adjust contrast
-    if adjust_contrast:
-        input_img = input_img*(0.6+random_number*1.5).astype(np.uint16)
-    return input_img
+    if adjust_brightness:
+        ran_degree = ran_degree*0.4+0.6
+        # lower brightness
+        process_img = (process_img*ran_degree).astype(np.uint8)
+    return process_img
 
 
 def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=-1, name=None, reuse=None, reg=1e-4,

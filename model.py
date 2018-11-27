@@ -310,15 +310,18 @@ class SegDepthModel:
         start_time = time.time()
         for epoch in range(1, epochs+1):  
             for step in range(steps_per_epoch):
+				# augment random degree
                 ran_aug = np.around(np.random.rand(), decimals=2)
+				# random select augment
+				ran_sel = np.around(np.random.rand(), decimals=2)
                 batch_left = load_batch_img(leftimg_path_array, random_index=random_index[step, batch_size],
-                                            ran_aug=ran_aug)
+                                            ran_aug=ran_aug, ran_sel)
                 batch_right = load_batch_img(rightimg_path_array, random_index=random_index[step, batch_size],
-                                             ran_aug=ran_aug)
+                                             ran_aug=ran_aug, ran_sel)
                 batch_seg = load_batch_img(segimg_path_array, random_index=random_index[step, batch_size],
-                                           ran_aug=ran_aug)
+                                           ran_aug=ran_aug, ran_sel)
                 batch_depth = load_batch_img(depthimg_path_array, random_index=random_index[step, batch_size],
-                                             ran_aug=ran_aug)
+                                             ran_aug=ran_aug, ran_sel)
 
                 _, loss = self.sess.run([train_optimizer, self.loss],
                                         feed_dict={self.left: batch_left, self.right: batch_right,
@@ -407,15 +410,18 @@ class SegDepthModel:
         start_time = time.time()
         for epoch in range(1, epochs+1):  
             for step in range(steps_per_epoch):
+                # augment random degree
                 ran_aug = np.around(np.random.rand(), decimals=2)
+				# random select augment
+				ran_sel = np.around(np.random.rand(), decimals=2)
                 batch_left = load_batch_img(leftimg_path_array, random_index=random_index[step, batch_size],
-                                            ran_aug=ran_aug)
+                                            ran_aug=ran_aug, ran_sel)
                 batch_right = load_batch_img(rightimg_path_array, random_index=random_index[step, batch_size],
-                                             ran_aug=ran_aug)
+                                             ran_aug=ran_aug, ran_sel)
                 batch_seg = load_batch_img(segimg_path_array, random_index=random_index[step, batch_size],
-                                           ran_aug=ran_aug)
+                                           ran_aug=ran_aug, ran_sel)
                 batch_depth = load_batch_img(depthimg_path_array, random_index=random_index[step, batch_size],
-                                             ran_aug=ran_aug)
+                                             ran_aug=ran_aug, ran_sel)
                 
                 _, loss = self.sess.run([train_Adam, loss],
                                         feed_dict={left_img: batch_left, right_img: batch_right,
