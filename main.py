@@ -17,8 +17,6 @@ parser.add_argument("--val_ratio", type=float, default=0.1)
 parser.add_argument("--training", type=bool, default=True)
 parser.add_argument("--finetune", type=bool, default=False)
 parser.add_argument("--retrain", type=bool, default=True)
-parser.add_argument("--shuffle", type=bool, default=True)
-parser.add_argument("--augment", type=bool, default=True)
 parser.add_argument("--batch_size", type=int, default=2)
 parser.add_argument("--learning_rate", type=float, default=0.005)
 args = parser.parse_args()
@@ -66,4 +64,4 @@ def main():
 
 
 if __name__ == '__main__':
-   main()
+    main()
