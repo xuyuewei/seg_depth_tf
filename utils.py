@@ -29,7 +29,7 @@ def img_preprocess(image):
     return image
 
 
-def cvload_img(image_path, resize=(448, 128)):
+def cvload_img(image_path, resize=(64, 224)):
     image = cv.imread(image_path)
     image = cv.resize(image, (resize[1], resize[0]), interpolation=cv.INTER_LINEAR)
 
@@ -51,7 +51,7 @@ def img_path_array(path, val_ratio=0., pattern=''):
         else:
             return path_array
     else:
-        path_array = [os.path.join(path, x) for x in os.listdir(path) if os.path.splitext(x)[0][-1]==pattern]
+        path_array = [os.path.join(path, x) for x in os.listdir(path) if os.path.splitext(x)[0][-1] == pattern]
         if val_ratio:
             train_path_array, val_path_array = train_val_split(path_array, val_ratio)
             return train_path_array, val_path_array
@@ -67,21 +67,25 @@ def train_val_split(images_path_array, val_ratio=0.1):
     return train_img_array, val_img_array
 
 
-def load_batch_img(images_path_array, random_index, img_shape=(128, 448), ran_aug=None, ran_sel=0.1):
+def load_batch_img(images_path_array, random_index=None, img_shape=(64, 224), ran_aug=None, ran_sel=0.1):
     
     if ran_aug is not None:
-        batch_img = np.array(map(lambda x: augment(img_preprocess(cvload_img(x, img_shape)), ran_aug, ran_sel),
-                                 images_path_array[random_index]))
+        batch_img = np.array(list(map(lambda x: augment(img_preprocess(cvload_img(x, img_shape)), ran_aug, ran_sel),
+                                      images_path_array[random_index])))
     else:
-        batch_img = np.array(map(lambda x: img_preprocess(cvload_img(x, img_shape)), images_path_array[random_index]))
+        if random_index is None:
+            batch_img = np.array(list(map(lambda x: img_preprocess(cvload_img(x, img_shape)), images_path_array)))
+        else:
+            batch_img = np.array(list(map(lambda x: img_preprocess(cvload_img(x, img_shape)),
+                                          images_path_array[random_index])))
     return batch_img
 
 
 def augment(input_img, ran_degree, ran_aug,
             angle=180,
-            img_size=(128, 448),
-            width_shift_range=0.4,  # Randomly translate the image horizontally
-            height_shift_range=0.3):  # Randomly translate the image vertically
+            img_size=(64, 224),
+            width_shift_range=0.2,  # Randomly translate the image horizontally
+            height_shift_range=0.1):  # Randomly translate the image vertically
 
     np_ran = ran_degree*2-1
     half_size = (img_size[1]//2, img_size[0]//2)
@@ -98,7 +102,7 @@ def augment(input_img, ran_degree, ran_aug,
                            [3*quar_size[0]+np_ran*eith_size[0], 3*quar_size[1]+np_ran*eith_size[1]]])
         M_perspective = cv.getPerspectiveTransform(pts1, pts2)
         input_img = cv.warpPerspective(input_img, M_perspective, (img_size[1], img_size[0]),
-                                         borderMode=cv.BORDER_REFLECT)
+                                       borderMode=cv.BORDER_REFLECT)
         # scale nad rotate by random
         M_rot = cv.getRotationMatrix2D((half_size[0]-eith_size[0]*np_ran, half_size[1]-eith_size[1]*np_ran),
                                        angle*ran_degree, 1)
