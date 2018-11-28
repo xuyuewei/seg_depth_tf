@@ -12,7 +12,7 @@ python main.py --save_weights_path '/home/xuyuwei/Documents/seg_depth_tf-master'
                --depth_path '/home/xuyuwei/Pictures/training/disp_noc_0' \
                --epochs 10 \
                --val_ratio 0.1 \
-               --batch_size 2 \
+               --batch_size 1 \
                --training True \
                --learning_rate 0.005
 ```
