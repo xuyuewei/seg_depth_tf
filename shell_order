@@ -1,0 +1,19 @@
+python main.py --save_weights_path '/home/xuyuwei/Documents/seg_depth_tf-master/saved_model' \
+               --images_path '/home/xuyuwei/Pictures/training/image' \
+               --seg_path '/home/xuyuwei/Pictures/training/semantic_rgb' \
+               --depth_path '/home/xuyuwei/Pictures/training/disp_noc_0' \
+               --epochs 3 \
+               --val_ratio 0.1 \
+               --batch_size 1 \
+               --training True \
+               --learning_rate 0.00001
+
+# open the venv environment
+source ./venv/bin/activate
+
+
+And to exit virtualenv later:
+deactivate  # don't exit until you're done using TensorFlow
+
+# working path
+/home/xuyuwei/Documents/seg_depth_tf-master

@@ -1,0 +1,12 @@
+# activate venv
+activate
+
+#working direction
+I:\xuyuewei\seg_depth_tf-master
+
+
+python I:\xuyuewei\seg_depth_tf-master\main.py --save_weights_path "I:/xuyuewei/seg_depth_tf-master/saved_model"  --images_path "I:\training\image_2"  --seg_path "I:\training\semantic_rgb"  --depth_path "I:\training\disp_noc_0"  --epochs 200 --val_ratio 0.1 --batch_size 10 --training True --learning_rate 0.1
+
+
+python I:\xuyuewei\seg_depth_tf-master\main.py --save_weights_path "I:\xuyuewei\seg_depth_tf-master\saved_model"  --images_path "I:\image_2"  --seg_path "I:\semantic_rgb"  --depth_path "I:\disp_noc_0"  --epochs 100 --val_ratio 0 --batch_size 1 --training True --learning_rate 0.5
+

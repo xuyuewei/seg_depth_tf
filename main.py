@@ -1,6 +1,5 @@
 from __future__ import print_function
 import argparse
-import os
 import tensorflow as tf
 from model import *
 from utils import *
@@ -50,17 +49,19 @@ def main():
             seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
                             learning_rate, epochs)
             seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
-                            learning_rate/5, epochs, retrain)
+                            learning_rate/2, epochs, retrain=retrain)
         elif finetune:
-            seg_depth.reload_model(save_weights_path)
-            seg_depth.finetune([images_path, images_path, seg_path, depth_path], batch_size,
-                                val_ratio, learning_rate/5, epochs, retrain)
+            seg_depth.reload_SegDepthModel(save_weights_path)
+            seg_depth.finetune([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size,
+                               val_ratio, learning_rate/2, epochs, retrain=retrain)
         else:
             seg_depth.reload_SegDepthModel(save_weights_path)
+            '''
             seg_imgs, depth_imgs = seg_depth.predict_SegDepthModel(left_img, right_img)
             for i, (seg, depth) in enumerate(zip(seg_imgs, depth_imgs)):
                 tf.io.write_file(os.path.join(output_path, 'seg'+str(i)+'.png'), seg)
                 tf.io.write_file(os.path.join(output_path, 'depth'+str(i)+'.png'), depth)
+                '''
 
 
 if __name__ == '__main__':
