@@ -47,9 +47,11 @@ def main():
         if training:
             seg_depth.build_SegDepthModel()
             seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
-                            learning_rate, epochs)
+                            learning_rate, epochs//2)
             seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
-                            learning_rate/2, epochs, retrain=retrain)
+                            learning_rate/10, epochs)
+            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
+                            learning_rate/20, epochs*2, retrain=retrain)
         elif finetune:
             seg_depth.reload_SegDepthModel(save_weights_path)
             seg_depth.finetune([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size,

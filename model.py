@@ -37,11 +37,11 @@ class SegDepthModel:
         print('u_left:')
         u_left = self.Unet(fusion_left, 32)
         print('')
-        
+
         print('conv4_right:')
         conv4_right = self.CNN_res(self.right, filters=[32], reuse=True, name='cnnleft')
         print('')
-        
+
         print('fusion_right:')
         fusion_right = self.SPP(conv4_right, reuse=True)
         print('')
@@ -49,20 +49,18 @@ class SegDepthModel:
         print('u_right:')
         u_right = self.Unet(fusion_right, 32, reuse=True)
         print('')
-        
-        print('seg_res:')
-        seg_res = self.CNN_res(u_left, filters=[64], name='seg_cnn_res')
-        print('')
-        
+
+        u_res = res_block(tf.layers.conv2d, u_right, 32, 3, dilation_rate=1,
+                          name='u_res', reg=self.reg)
         print('seg output:')
-        seg_res = conv_block(tf.layers.conv2d, seg_res, 3, 1, strides=1, dilation_rate=1, name='seg_res', reg=self.reg)
+        seg_res = conv_block(tf.layers.conv2d, u_res, 3, 1, strides=1, dilation_rate=1, name='seg_res', reg=self.reg)
         print(seg_res.shape)
         print('')
         
         print('merge:')
         merge = self.lrMerge(u_left, u_right)
         print('')
-        merge = self.CNN_res(merge, filters=[64], name='merge_res')
+
         print('depth_stack:')
         depth_stack = self.stackedhourglass(merge)
         print('')
@@ -77,10 +75,9 @@ class SegDepthModel:
         
         # self.loss = 0.5 * self.smooth_l1_loss(depth_stack, self.depth) + self.dice_loss(seg_res, self.seg) + \
         # 0.5 * self.mse(depth_stack, self.depth)
-        self.loss = 0.4 * self.rmse(depth_stack, self.depth) + 0.3 * self.huber(depth_stack, self.depth) + \
-                    0.3 * self.smooth_l1_loss(depth_stack, self.depth) + \
-                    0.4 * self.rmse(seg_res, self.seg) + 0.3 * self.mae(seg_res, self.seg) + \
-                    0.3 * self.huber(seg_res, self.seg)
+        self.loss = 0.5 * self.huber(depth_stack, self.depth) + \
+                    0.5 * self.smooth_l1_loss(depth_stack, self.depth) + \
+                    0.5 * self.rmse(seg_res, self.seg) + 0.5 * self.mae(seg_res, self.seg)
             
         tf.add_to_collection("closs", self.loss)
 
@@ -191,7 +188,7 @@ class SegDepthModel:
         print(bottom.shape)
         with tf.variable_scope('Unet'):
             downconv = []
-            for i in range(3):
+            for i in range(4):
                 bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool00'+str(i))
                 bottom = conv_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
                                     name='dconv0'+str(i), reuse=reuse)
@@ -206,12 +203,12 @@ class SegDepthModel:
             bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool01'+'center')
             center = conv_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
                                 name='cconv0'+'center', reuse=reuse)
-            for i in range(3):
+            for i in range(4):
                 filters = filters//2
                 center = conv_block(tf.layers.conv2d_transpose, center, filters, kernel_size, 2, name='dconv'+str(i),
                                     reuse=reuse)
                 print(center.shape)
-                center = tf.concat([center, downconv[2-i]], axis=-1, name='uconcat'+str(i))
+                center = tf.concat([center, downconv[3-i]], axis=-1, name='uconcat'+str(i))
                 center = conv_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
                                     name='uconv0'+str(i), reuse=reuse)
                 center = res_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
@@ -323,8 +320,8 @@ class SegDepthModel:
         np.random.shuffle(random_index)
 
         if retrain:
-            AdadeltaOptimizer = tf.train.AdadeltaOptimizer(learning_rate=learning_rate)
-            train_optimizer = AdadeltaOptimizer.minimize(self.loss)
+            AdamOptimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            train_optimizer = AdamOptimizer.minimize(self.loss)
         else:
             RMSPropOptimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
             train_optimizer = RMSPropOptimizer.minimize(self.loss)
