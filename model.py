@@ -28,7 +28,7 @@ class SegDepthModel:
         # self.image_size_tf = tf.shape(self.left)[1:3]
 
         print('conv4_left:')
-        conv4_left = self.CNN_res(self.left, filters=[32], name='cnnleft')
+        conv4_left = self.CNN_res(self.left, filters=[32, 64, 128], name='cnnleft')
         print('')
         print('fusion_left:')
         fusion_left = self.SPP(conv4_left)
@@ -39,7 +39,7 @@ class SegDepthModel:
         print('')
 
         print('conv4_right:')
-        conv4_right = self.CNN_res(self.right, filters=[32], reuse=True, name='cnnleft')
+        conv4_right = self.CNN_res(self.right, filters=[32, 64, 128], reuse=True, name='cnnleft')
         print('')
 
         print('fusion_right:')
@@ -326,7 +326,6 @@ class SegDepthModel:
             RMSPropOptimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
             train_optimizer = RMSPropOptimizer.minimize(self.loss)
 
-            
         init = tf.initializers.global_variables()
         self.sess.run(init)
 
@@ -345,6 +344,7 @@ class SegDepthModel:
             ran = epoch * num_of_train_samples % aug_rate
             print('Epoch %d' % epoch)
             print('')
+            total_loss = 0
             for step in range(0, num_of_train_samples, batch_size):
 
                 batch_left = load_batch_img(leftimg_path_array, img_shape=(self.height, self.weight),
@@ -364,6 +364,7 @@ class SegDepthModel:
                                         feed_dict={self.left: batch_left, self.right: batch_right,
                                                    self.seg: batch_seg, self.depth: batch_depth,
                                                    self.is_training: True})
+                total_loss += loss
 
                 slog = 'Step %d training loss = %.3f , time = %.2f' % (step, loss, time.time() - start_time)
                 log.write(slog + '\n')
@@ -377,11 +378,11 @@ class SegDepthModel:
                                         feed_dict={self.left: val_left, self.right: val_right,
                                                    self.seg: val_seg, self.depth: val_depth,
                                                    self.is_training: True})
-                elog = 'Epoch %d metrics = %.3f ,training loss = %.3f \n' % (epoch, metrics, loss)
+                ave_loss = total_loss/num_of_train_samples*batch_size
+                elog = 'Epoch %d metrics = %.3f ,ave_training loss = %.3f \n' % (epoch, metrics, ave_loss)
                 print(elog)
                 log.write('\n' + elog + '\n\n')
         log.close()
-
     
     def finetune(self, train_data_path, save_path, batch_size=10, val_ratio=0.1, learning_rate=0.005, epochs=5):
         Adam_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -460,7 +461,6 @@ class SegDepthModel:
                                                     self.seg_res: val_seg, self.depth_stack: val_depth,
                                                     self.is_training: False})
                 print('Epoch %d metrics = %.3f ,training loss = %.3f \n' % (epoch, metrics, loss))
-
 
     def reload_SegDepthModel(self, load_path):
         meta_path = os.path.join(load_path, 'model.ckpt.meta')

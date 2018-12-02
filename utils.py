@@ -22,8 +22,8 @@ def img_preprocess(image, normalize=True, prepro=True):
         image = (sd * np.log2(image + 0.0001)).astype(np.uint8)
 
         # gamma enhance contrast
-        sg = np.floor(np.power(255, 1.8) / 255)
-        image = np.power(image, 1.8) / sg
+        sg = np.floor(np.power(255, 2) / 255)
+        image = np.power(image, 2) / sg
 
     # normalize image
     if normalize:
@@ -33,13 +33,14 @@ def img_preprocess(image, normalize=True, prepro=True):
     return image
 
 
-def multiclass_label_normalize(image, normalize=True):
+def multiclass_label_normalize(image, normalize=False):
     # normalize image
     if normalize:
-        image = (np.log2(image + 0.0001)).astype(np.uint8)
+        sd = np.floor(255 / np.log2(255))
+        image = (sd * np.log2(image + 0.0001)).astype(np.uint8)
     return image
 
-def reg_label_normalize(image, normalize=True):
+def reg_label_normalize(image, normalize=False):
     # normalize image
     if normalize:
         image = np.around((np.log2(image + 0.0001)), decimals=2)
@@ -47,16 +48,15 @@ def reg_label_normalize(image, normalize=True):
     return image
 
 
-def cvload_img(image_path, resize=(32, 112)):
+def cvload_img(image_path, resize=(32, 112), temp_ratio=1.5):
+    image = cv.imread(image_path)
+    image = cv.resize(image, (np.int(resize[1]*temp_ratio), np.int(resize[0]*temp_ratio)),
+                      interpolation=cv.INTER_LINEAR)
+    return image
+
+def cvload_img_val(image_path, resize=(32, 112)):
     image = cv.imread(image_path)
     image = cv.resize(image, (resize[1], resize[0]), interpolation=cv.INTER_LINEAR)
-
-    '''
-    if adjust_brightness:
-        ran_degree = ran_degree*0.4+0.6
-        # lower brightness
-        image = (image*ran_degree).astype(np.uint8)
-    '''
     return image
 
 
@@ -93,10 +93,10 @@ def load_batch_img(images_path_array, random_index=None, img_shape=(32, 112), ra
                                                             ran_aug, ran_sel), images_path_array[random_index])))
         else:
             if random_index is None:
-                batch_img = np.array(list(map(lambda x: multiclass_label_normalize(cvload_img(x, img_shape), normalize),
+                batch_img = np.array(list(map(lambda x: multiclass_label_normalize(cvload_img_val(x, img_shape), normalize),
                                               images_path_array)))
             else:
-                batch_img = np.array(list(map(lambda x: multiclass_label_normalize(cvload_img(x, img_shape), normalize),
+                batch_img = np.array(list(map(lambda x: multiclass_label_normalize(cvload_img_val(x, img_shape), normalize),
                                               images_path_array[random_index])))
     elif label == 2:
         if ran_aug is not None:
@@ -104,10 +104,10 @@ def load_batch_img(images_path_array, random_index=None, img_shape=(32, 112), ra
                                                             ran_aug, ran_sel), images_path_array[random_index])))
         else:
             if random_index is None:
-                batch_img = np.array(list(map(lambda x: reg_label_normalize(cvload_img(x, img_shape), normalize),
+                batch_img = np.array(list(map(lambda x: reg_label_normalize(cvload_img_val(x, img_shape), normalize),
                                               images_path_array)))
             else:
-                batch_img = np.array(list(map(lambda x: reg_label_normalize(cvload_img(x, img_shape), normalize),
+                batch_img = np.array(list(map(lambda x: reg_label_normalize(cvload_img_val(x, img_shape), normalize),
                                               images_path_array[random_index])))
     else:
         if ran_aug is not None:
@@ -115,25 +115,28 @@ def load_batch_img(images_path_array, random_index=None, img_shape=(32, 112), ra
                                                             ran_aug, ran_sel), images_path_array[random_index])))
         else:
             if random_index is None:
-                batch_img = np.array(list(map(lambda x: img_preprocess(cvload_img(x, img_shape), normalize, prepro),
+                batch_img = np.array(list(map(lambda x: img_preprocess(cvload_img_val(x, img_shape), normalize, prepro),
                                               images_path_array)))
             else:
-                batch_img = np.array(list(map(lambda x: img_preprocess(cvload_img(x, img_shape), normalize, prepro),
+                batch_img = np.array(list(map(lambda x: img_preprocess(cvload_img_val(x, img_shape), normalize, prepro),
                                               images_path_array[random_index])))
     return batch_img
 
 
 def augment(input_img, ran_degree, ran_aug,
-            angle=180,
+            angle=30,
             img_size=(64, 224),
-            width_shift_range=0.4,  # Randomly translate the image horizontally
-            height_shift_range=0.2):  # Randomly translate the image vertically
-
+            temp_ratio=1.5):
+    # width_shift_range=0.5
+    # height_shift_range=0.2
+    onehalf_size = (np.int(img_size[0] * temp_ratio), np.int(img_size[1] * temp_ratio))
+    wshift_range = onehalf_size[1]-img_size[1]
+    hshift_range = onehalf_size[0]-img_size[0]
     np_ran = ran_degree*2-1
-    half_size = (img_size[1]//2, img_size[0]//2)
-    quar_size = (img_size[1]//4, img_size[0]//4)
-    eith_size = (img_size[1]//8, img_size[0]//8)
-
+    # half_size = (img_size[1]//2, img_size[0]//2)
+    # quar_size = (onehalf_size[1]//4, onehalf_size[0]//4)
+    # eith_size = (onehalf_size[1]//8, onehalf_size[0]//8)
+    '''
     # perspective_transform
     pts1 = np.float32([[quar_size[0], quar_size[1]], [3 * quar_size[0], quar_size[1]],
                        [quar_size[0], 3 * quar_size[1]], [3 * quar_size[0], 3 * quar_size[1]]])
@@ -142,36 +145,39 @@ def augment(input_img, ran_degree, ran_aug,
                        [quar_size[0] - np_ran * eith_size[0], 3 * quar_size[1] + np_ran * eith_size[1]],
                        [3 * quar_size[0] + np_ran * eith_size[0], 3 * quar_size[1] + np_ran * eith_size[1]]])
     M_perspective = cv.getPerspectiveTransform(pts1, pts2)
-    input_img = cv.warpPerspective(input_img, M_perspective, (img_size[1], img_size[0]),
-                                   borderMode=cv.BORDER_REFLECT)
+    # input_img = cv.warpPerspective(input_img, M_perspective, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+    input_img = cv.warpPerspective(input_img, M_perspective, (img_size[1], img_size[0]))
+    '''
 
-    if ran_aug < 0.5:
-        # scale nad rotate by random
-        M_rot = cv.getRotationMatrix2D((half_size[0]-eith_size[0]*np_ran, half_size[1]-eith_size[1]*np_ran),
-                                       angle*ran_degree, 1)
-        input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+    if ran_aug < 0.25:
+        # scale nad rotate by random -30~30 degree
+        M_rot = cv.getRotationMatrix2D((onehalf_size[1]//2, onehalf_size[0]//2), angle*np_ran, 1)
+        # input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+        input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]))
+    elif ran_aug < 0.5:
+        # scale nad rotate by random 150~210 degree
+        M_rot = cv.getRotationMatrix2D((onehalf_size[1]//2, onehalf_size[0]//2), 180+angle * np_ran, 1)
+        # input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
+        input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]))
+    elif ran_aug < 0.75:
+        # random_crop
+        ran2 = ran_aug*4-2
+        ind_h = np.int(hshift_range * ran_degree)
+        ind_w = np.int(wshift_range * ran2)
+        input_img = input_img[ind_h:img_size[0]+ind_h, ind_w:img_size[1]+ind_w]
     else:
-        # translate
-        M_trans = np.float32([[1, 0, img_size[1]*width_shift_range*np_ran],
-                                          [0, 1, img_size[0]*height_shift_range*np_ran]])
-        input_img = cv.warpAffine(input_img, M_trans, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
-        '''
-        np_ran = np_ran / 2
-        # affine_transform
-        apts1 = np.float32([[quar_size[0], quar_size[1]], [3*quar_size[0], quar_size[1]],
-                            [quar_size[0], 3*quar_size[1]]])
-        apts2 = np.float32([[quar_size[0]+np_ran*eith_size[0], quar_size[1]+np_ran*eith_size[1]],
-                            [3*quar_size[0]-np_ran*eith_size[0], quar_size[1]-np_ran*eith_size[1]],
-                            [quar_size[0]-np_ran*eith_size[0], 3*quar_size[1]-np_ran*eith_size[1]]])
-        M_affine = cv.getAffineTransform(apts1, apts2)
-        input_img = cv.warpAffine(input_img, M_affine, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
-        '''
-
+        input_img = cv.resize(input_img, (img_size[1], img_size[0]), interpolation=cv.INTER_LINEAR)
+        input_img = np.fliplr(input_img)
+    '''
+    ran_degree = ran_degree * 0.3 + 0.7
+    # random lower brightness
+    input_img = (input_img * ran_degree).astype(np.uint8)
+    '''
     return input_img
 
 
 def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=-1, name=None, reuse=None, reg=1e-4,
-               apply_bn=True, apply_relu=True):
+               apply_bn=True, apply_elu=True):
     with tf.variable_scope(name):
         conv_params = {
             'padding': 'same',
@@ -181,7 +187,6 @@ def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=-1, 
             'name': 'conv',
             'reuse': reuse
         }
-        # 这里需要注意，转置卷积不能加上空洞卷积的值
         if dilation_rate > -1:
             conv_params['dilation_rate'] = dilation_rate
         # if dilation_rate == -1:
@@ -191,9 +196,10 @@ def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=-1, 
             bottom = tf.layers.batch_normalization(bottom,
                                                    training=tf.get_default_graph().get_tensor_by_name('is_training:0'),
                                                    reuse=reuse, name='bn')
-        if apply_relu:
-            bottom = tf.nn.relu(bottom, name='relu')
+        if apply_elu:
+            bottom = tf.nn.elu(bottom, name='elu')
         return bottom
+
 
 
 def res_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, name=None, reuse=None, reg=1e-4,
@@ -203,7 +209,7 @@ def res_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, na
         bottom = conv_block(func, bottom, filters, kernel_size, strides, dilation_rate, name='conv1', reuse=reuse,
                             reg=reg)
         bottom = conv_block(func, bottom, filters, kernel_size, strides, dilation_rate, name='conv2', reuse=reuse,
-                            reg=reg, apply_relu=False)
+                            reg=reg, apply_elu=False)
         if projection:
             short_cut = conv_block(func, short_cut, filters, kernel_size, strides, dilation_rate, name='conv3', 
                                    reuse=reuse, reg=reg)
