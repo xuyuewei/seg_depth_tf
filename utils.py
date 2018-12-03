@@ -201,19 +201,23 @@ def conv_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=-1, 
         return bottom
 
 
-
 def res_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, name=None, reuse=None, reg=1e-4,
               projection=True):
     with tf.variable_scope(name):
         short_cut = bottom
-        bottom = conv_block(func, bottom, filters, kernel_size, strides, dilation_rate, name='conv1', reuse=reuse,
+        bottom = tf.nn.elu(bottom, name='elu')
+        bottom = conv_block(func, bottom, filters, 1, strides, dilation_rate, name='conv1', reuse=reuse,
                             reg=reg)
         bottom = conv_block(func, bottom, filters, kernel_size, strides, dilation_rate, name='conv2', reuse=reuse,
                             reg=reg, apply_elu=False)
+        bottom = conv_block(func, bottom, filters, 1, strides, dilation_rate, name='conv3', reuse=reuse,
+                            reg=reg)
         if projection:
-            short_cut = conv_block(func, short_cut, filters, kernel_size, strides, dilation_rate, name='conv3', 
+            short_cut = conv_block(func, short_cut, filters, 1, strides, dilation_rate, name='sconv3',
                                    reuse=reuse, reg=reg)
+            short_cut = tf.nn.elu(short_cut, name='elu')
         bottom = tf.add(bottom, short_cut, 'add')
+
         return bottom
 
 

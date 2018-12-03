@@ -28,32 +28,25 @@ class SegDepthModel:
         # self.image_size_tf = tf.shape(self.left)[1:3]
 
         print('conv4_left:')
-        conv4_left = self.CNN_res(self.left, filters=[32, 64, 128], name='cnnleft')
-        print('')
-        print('fusion_left:')
-        fusion_left = self.SPP(conv4_left)
+        conv4_left = self.CNN_res(self.left, filters=[32, 64], name='cnnleft')
         print('')
     
         print('u_left:')
-        u_left = self.Unet(fusion_left, 32)
+        u_left = self.Unet(conv4_left, 32)
         print('')
 
         print('conv4_right:')
-        conv4_right = self.CNN_res(self.right, filters=[32, 64, 128], reuse=True, name='cnnleft')
+        conv4_right = self.CNN_res(self.right, filters=[32, 64], reuse=True, name='cnnleft')
         print('')
 
-        print('fusion_right:')
-        fusion_right = self.SPP(conv4_right, reuse=True)
-        print('')
-        
         print('u_right:')
-        u_right = self.Unet(fusion_right, 32, reuse=True)
+        u_right = self.Unet(conv4_right, 32, reuse=True)
         print('')
 
-        u_res = res_block(tf.layers.conv2d, u_right, 32, 3, dilation_rate=1,
-                          name='u_res', reg=self.reg)
+        cnn_u = self.CNN_res(u_right, filters=[128, 64], name='cnn_u')
+        cnn_u = conv_block(tf.layers.conv2d, cnn_u, 32, 1, strides=1, dilation_rate=1, name='cnn_u1', reg=self.reg)
         print('seg output:')
-        seg_res = conv_block(tf.layers.conv2d, u_res, 3, 1, strides=1, dilation_rate=1, name='seg_res', reg=self.reg)
+        seg_res = conv_block(tf.layers.conv2d, cnn_u, 3, 1, strides=1, dilation_rate=1, name='seg_res', reg=self.reg)
         print(seg_res.shape)
         print('')
         
@@ -61,22 +54,22 @@ class SegDepthModel:
         merge = self.lrMerge(u_left, u_right)
         print('')
 
-        print('depth_stack:')
-        depth_stack = self.stackedhourglass(merge)
-        print('')
+        depth_cnn = self.CNN_res(merge, filters=[128, 64], name='depth_spp')
+        depth_cnn = conv_block(tf.layers.conv2d, depth_cnn, 32, 1, strides=1, dilation_rate=1, name='depth_cnn',
+                               reg=self.reg)
         print('depth output:')
-        depth_stack = conv_block(tf.layers.conv2d, depth_stack, 3, 1, strides=1, dilation_rate=1, name='depth_stack',
-                                 reg=self.reg)
-        print(depth_stack.shape)
+        depth_res = conv_block(tf.layers.conv2d, depth_cnn, 3, 1, strides=1, dilation_rate=1, name='depth_cnn1',
+                               reg=self.reg)
+        print(depth_res.shape)
         print('')
         
         tf.add_to_collection("cseg_res", seg_res)
-        tf.add_to_collection("cdepth_stack", depth_stack)
+        tf.add_to_collection("cdepth_stack", depth_res)
         
         # self.loss = 0.5 * self.smooth_l1_loss(depth_stack, self.depth) + self.dice_loss(seg_res, self.seg) + \
         # 0.5 * self.mse(depth_stack, self.depth)
-        self.loss = 0.5 * self.huber(depth_stack, self.depth) + \
-                    0.5 * self.smooth_l1_loss(depth_stack, self.depth) + \
+        self.loss = 0.5 * self.huber(depth_res, self.depth) + \
+                    0.5 * self.smooth_l1_loss(depth_res, self.depth) + \
                     0.5 * self.rmse(seg_res, self.seg) + 0.5 * self.mae(seg_res, self.seg)
             
         tf.add_to_collection("closs", self.loss)
@@ -127,7 +120,7 @@ class SegDepthModel:
         print(bottom.shape)
         with tf.variable_scope(name):
             with tf.variable_scope('conv1'):
-                bottom = conv_block(tf.layers.conv2d, bottom, filters[0], 3, strides=1, dilation_rate=1,
+                bottom = conv_block(tf.layers.conv2d, bottom, filters[0], 1, strides=1, dilation_rate=1,
                                     name='conv1_0', reuse=reuse, reg=self.reg)
                 for i in range(1):
                     bottom = res_block(tf.layers.conv2d, bottom, filters[0], 3, dilation_rate=1,
@@ -135,7 +128,7 @@ class SegDepthModel:
             if dep < 2:
                 return bottom
             with tf.variable_scope('conv2'):
-                bottom = conv_block(tf.layers.conv2d, bottom, filters[1], 3, strides=1, dilation_rate=1,
+                bottom = conv_block(tf.layers.conv2d, bottom, filters[1], 1, strides=1, dilation_rate=1,
                                     name='conv2_0', reuse=reuse, reg=self.reg)
                 for i in range(1):
                     bottom = res_block(tf.layers.conv2d, bottom, filters[1], 3, dilation_rate=1,
@@ -143,7 +136,7 @@ class SegDepthModel:
             if dep < 3:
                 return bottom
             with tf.variable_scope('conv3'):
-                bottom = conv_block(tf.layers.conv2d, bottom, filters[2], 3, strides=1, dilation_rate=1,
+                bottom = conv_block(tf.layers.conv2d, bottom, filters[2], 1, strides=1, dilation_rate=1,
                                     name='conv3_0', reuse=reuse, reg=self.reg)
                 for i in range(1):
                     bottom = res_block(tf.layers.conv2d, bottom, filters[2], 3, dilation_rate=1,
@@ -152,7 +145,7 @@ class SegDepthModel:
             if dep < 4:
                 return bottom
             with tf.variable_scope('conv4'):
-                bottom = conv_block(tf.layers.conv2d, bottom, filters[3], 3, strides=1, dilation_rate=1,
+                bottom = conv_block(tf.layers.conv2d, bottom, filters[3], 1, strides=1, dilation_rate=1,
                                     name='conv4_0', reuse=reuse, reg=self.reg)
                 for i in range(1):
                     bottom = res_block(tf.layers.conv2d, bottom, filters[3], 3, dilation_rate=1,
@@ -162,13 +155,13 @@ class SegDepthModel:
         print(bottom.shape)
         return bottom
 
-    def SPP(self, bottom, reuse=False):
+    def SPP(self, bottom, reuse=False, name='spp'):
         print('SPP'+' bottom:')
         print(bottom.shape)
-        with tf.variable_scope('SPP'):
+        with tf.variable_scope(name):
             branches = []
             for i, p in enumerate([16, 8, 4]):
-                branches.append(SPP_branch(tf.layers.conv2d, bottom, p, 32, 3, dilation_rate=1,
+                branches.append(SPP_branch(tf.layers.conv2d, bottom, p, 32, 1, dilation_rate=1,
                                            name='branch_%d' % (i+1), reuse=reuse,
                                            reg=self.reg))
             concat = tf.concat(branches, axis=-1, name='concat')
@@ -190,7 +183,7 @@ class SegDepthModel:
             downconv = []
             for i in range(4):
                 bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool00'+str(i))
-                bottom = conv_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
+                bottom = conv_block(tf.layers.conv2d, bottom, filters, 1, strides, dilation_rate,
                                     name='dconv0'+str(i), reuse=reuse)
                 bottom = res_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
                                    name='dconv1' + str(i), reuse=reuse)
@@ -203,13 +196,17 @@ class SegDepthModel:
             bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool01'+'center')
             center = conv_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
                                 name='cconv0'+'center', reuse=reuse)
+            center = res_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
+                               name='dconv1center', reuse=reuse)
+            center = res_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
+                               name='dconv2center', reuse=reuse)
             for i in range(4):
                 filters = filters//2
                 center = conv_block(tf.layers.conv2d_transpose, center, filters, kernel_size, 2, name='dconv'+str(i),
                                     reuse=reuse)
                 print(center.shape)
                 center = tf.concat([center, downconv[3-i]], axis=-1, name='uconcat'+str(i))
-                center = conv_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
+                center = conv_block(tf.layers.conv2d, center, filters, 1, strides, dilation_rate,
                                     name='uconv0'+str(i), reuse=reuse)
                 center = res_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
                                    name='uconv1'+str(i), reuse=reuse)
@@ -230,61 +227,9 @@ class SegDepthModel:
             print('Merge_output:')
             print(lr_concat.shape)
         return lr_concat
-        
-    def stackedhourglass(self, bottom, filters=(32, 64, 128), kernel_size=3, reg=1e-4):
-        with tf.variable_scope('Stackedhourglass'):
-            print('Stackedhourglass'+' bottom:')
-            print(bottom.shape)
-            short_cuts = []
-            regressions = []
-            bottom = conv_block(tf.layers.conv2d, bottom, filters[0], kernel_size, strides=1, dilation_rate=1,
-                                name='stack_0_1', reg=reg)
-            bottom = res_block(tf.layers.conv2d, bottom, filters[1], kernel_size, strides=1, dilation_rate=1,
-                               name='stack_0_2', reg=reg)
-            short_cuts.append(bottom)
-            for i in range(3):
-                bottom = tf.layers.average_pooling2d(bottom, 4, 4, 'same', name='0avg_pool')
-                bottom = conv_block(tf.layers.conv2d, bottom, filters[1], kernel_size, strides=1, dilation_rate=1,
-                                    name='stack_%d_1' % (i+1), reg=reg)
-                bottom = res_block(tf.layers.conv2d, bottom, filters[1], kernel_size, strides=1, dilation_rate=1,
-                                   name='estack_0_3'+str(i), reg=reg)
-                if i == 0:
-                    short_cuts.append(bottom)
-                    short_cuts.append(bottom)
-                else:
-                    bottom = tf.add(bottom, short_cuts[2], name='stack_%d_s' % (i + 1))
-                print(bottom.shape)
-                    
-                bottom = tf.layers.average_pooling2d(bottom, 4, 4, 'same', name='1avg_pool')
-                bottom = conv_block(tf.layers.conv2d, bottom, filters[2], kernel_size, strides=1, dilation_rate=1,
-                                    name='stack_%d_2' % (i+1), reg=reg)
-                bottom = res_block(tf.layers.conv2d, bottom, filters[2], kernel_size, strides=1, dilation_rate=1,
-                                   name='estack_0_4'+str(i), reg=reg)
-                print(bottom.shape)
 
-                bottom = conv_block(tf.layers.conv2d_transpose, bottom, filters[1], kernel_size, strides=4,
-                                    name='stack_%d_3' % (i+1), reg=reg)
-                bottom = tf.add(bottom, short_cuts[1], name='rstack_%d' % (i+1))
-                short_cuts[2] = bottom
-                print(bottom.shape)
-                bottom = conv_block(tf.layers.conv2d_transpose, bottom, filters[1], kernel_size, strides=4,
-                                    name='stack_%d_4' % (i+1), reg=reg)
-                bottom = res_block(tf.layers.conv2d, bottom, filters[1], kernel_size, strides=1, dilation_rate=1,
-                                   name='estack_0_5'+str(i), reg=reg)
-
-                bottom = tf.add(bottom, short_cuts[0], name='drstack_%d' % (i+1))
-                print(bottom.shape)
-                regressions.append(bottom)
-            
-            output = tf.concat(regressions, axis=-1, name='stack_concat')
-            output = conv_block(tf.layers.conv2d, output, 32, kernel_size, strides=1, dilation_rate=1, name='constack',
-                                reg=reg)
-        print('Stackedhourglass_output:')
-        print(output.shape)
-        return output
-   
     def train(self, train_data_path, save_path, batch_size=10, val_ratio=0.1, learning_rate=0.001, epochs=5,
-              fine_tune=False, stop_patience=2):
+              fine_tune=False, stop_patience=3):
 
         ckpt_path = os.path.join(save_path, 'model.ckpt')
         train_saver = tf.train.Saver(max_to_keep=5, keep_checkpoint_every_n_hours=2, allow_empty=True)
@@ -335,10 +280,11 @@ class SegDepthModel:
         log = open(save_path+'/tf_training_log_' + localtime + '.txt', "a+")
         epoch = 0
         last_loss = 500
+        last_metric = 500
         p_count = 0
         while epoch <= epochs:
             ran = epoch * num_of_train_samples % aug_rate
-            print('Epoch %d' % epoch)
+            print('Epoch %d ...' % epoch)
             print('')
             total_loss = 0
             for step in range(0, num_of_train_samples, batch_size):
@@ -363,21 +309,25 @@ class SegDepthModel:
                 total_loss += loss
                 slog = 'Step %d training loss = %.3f , time = %.2f' % (step, loss, time.time() - start_time)
                 log.write(slog + '\n')
-                print(slog)
-                print('')
+                # print(slog)
+                # print('')
                 ran += 1
 
             ave_loss = total_loss / num_of_train_samples * batch_size
             if val_ratio:
-                metrics = self.sess.run(self.loss,
+                metric = self.sess.run(self.loss,
                                         feed_dict={self.left: val_left, self.right: val_right,
                                                    self.seg: val_seg, self.depth: val_depth,
                                                    self.is_training: True})
 
-                elog = 'Epoch %d metrics = %.3f ,ave_training loss = %.3f \n' % (epoch, metrics, ave_loss)
+                elog = 'Epoch %d metrics = %.3f ,ave_training loss = %.3f \n' % (epoch, metric, ave_loss)
                 print(elog)
                 log.write('\n' + elog + '\n\n')
 
+            if metric < last_metric:
+                last_metric = metric
+                if epochs - epoch < 2:
+                    epochs += 3
             if ave_loss < last_loss:
                 last_loss = ave_loss
                 # save model
@@ -386,7 +336,7 @@ class SegDepthModel:
                 p_count += 1
                 if p_count >= stop_patience:
                     ada_learning_rate = tf.multiply(ada_learning_rate, learning_rate_dacay)
-                    self.sess.run(ada_learning_rate)
+                    print('Adjust learning rate....%3f' % self.sess.run(ada_learning_rate))
                     p_count = 0
 
             epoch += 1
