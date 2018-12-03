@@ -46,16 +46,13 @@ def main():
         seg_depth = SegDepthModel(sess, input_shape[0], input_shape[1])
         if training:
             seg_depth.build_SegDepthModel()
-            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
-                            learning_rate, epochs//2)
-            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
-                            learning_rate/10, epochs)
-            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size, val_ratio,
-                            learning_rate/100, epochs*2, retrain=retrain)
+            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size,
+                            val_ratio, learning_rate, epochs)
+            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size,
+                            val_ratio, learning_rate / 10, epochs, True)
         elif finetune:
-            seg_depth.reload_SegDepthModel(save_weights_path)
-            seg_depth.finetune([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size,
-                               val_ratio, learning_rate/2, epochs, retrain=retrain)
+            seg_depth.train([images_path, images_path, seg_path, depth_path], save_weights_path, batch_size,
+                            val_ratio, learning_rate/2, epochs, finetune)
         else:
             seg_depth.reload_SegDepthModel(save_weights_path)
             '''

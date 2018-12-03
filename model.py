@@ -284,9 +284,10 @@ class SegDepthModel:
         return output
    
     def train(self, train_data_path, save_path, batch_size=10, val_ratio=0.1, learning_rate=0.001, epochs=5,
-              retrain=False):
+              fine_tune=False, stop_patience=2):
+
         ckpt_path = os.path.join(save_path, 'model.ckpt')
-        saver = tf.train.Saver(max_to_keep=5, keep_checkpoint_every_n_hours=2, allow_empty=True)
+        train_saver = tf.train.Saver(max_to_keep=5, keep_checkpoint_every_n_hours=2, allow_empty=True)
 
         leftimg_path_array = img_path_array(train_data_path[0], val_ratio, '0')
         rightimg_path_array = img_path_array(train_data_path[1], val_ratio, '1')
@@ -305,30 +306,23 @@ class SegDepthModel:
             rightimg_path_array = rightimg_path_array[0]
             segimg_path_array = segimg_path_array[0]
             depthimg_path_array = depthimg_path_array[0]
-        '''
-        graph = tf.get_default_graph()
-        tloss = graph.get_collection('closs')
-        left_img = graph.get_tensor_by_name('left_img:0')
-        right_img = graph.get_tensor_by_name('right_img:0')
-        seg_img = graph.get_tensor_by_name('seg_img:0')
-        depth_img = graph.get_tensor_by_name('depth_img:0')
-        training = graph.get_tensor_by_name('is_training:0')
-        '''
 
         num_of_train_samples = len(leftimg_path_array)
         random_index = np.arange(num_of_train_samples)
         np.random.shuffle(random_index)
 
-        if retrain:
-            AdamOptimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-            train_optimizer = AdamOptimizer.minimize(self.loss)
+        learning_rate_dacay = 0.5
+        ada_learning_rate = tf.Variable(learning_rate)
+
+        if fine_tune:
+            AdagradOptimizer = tf.train.AdagradOptimizer(learning_rate=ada_learning_rate)
+            train_optimizer = AdagradOptimizer.minimize(self.loss)
+            self.sess.run(tf.initializers.global_variables())
+            self.reload_SegDepthModel(save_path)
         else:
-            RMSPropOptimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+            RMSPropOptimizer = tf.train.RMSPropOptimizer(learning_rate=ada_learning_rate)
             train_optimizer = RMSPropOptimizer.minimize(self.loss)
-
-        init = tf.initializers.global_variables()
-        self.sess.run(init)
-
+            self.sess.run(tf.initializers.global_variables())
         aug_rate = 1*num_of_train_samples
         # augment random degree
         ran_aug = np.around(np.random.rand(aug_rate), decimals=2)
@@ -339,8 +333,10 @@ class SegDepthModel:
         localtime = time.strftime("%Y-%m-%d-%H-%M")
 
         log = open(save_path+'/tf_training_log_' + localtime + '.txt', "a+")
-
-        for epoch in range(0, epochs):
+        epoch = 0
+        last_loss = 500
+        p_count = 0
+        while epoch <= epochs:
             ran = epoch * num_of_train_samples % aug_rate
             print('Epoch %d' % epoch)
             print('')
@@ -365,123 +361,59 @@ class SegDepthModel:
                                                    self.seg: batch_seg, self.depth: batch_depth,
                                                    self.is_training: True})
                 total_loss += loss
-
                 slog = 'Step %d training loss = %.3f , time = %.2f' % (step, loss, time.time() - start_time)
                 log.write(slog + '\n')
                 print(slog)
                 print('')
-                # save model
-                saver.save(self.sess, ckpt_path, global_step=step)
                 ran += 1
+
+            ave_loss = total_loss / num_of_train_samples * batch_size
             if val_ratio:
                 metrics = self.sess.run(self.loss,
                                         feed_dict={self.left: val_left, self.right: val_right,
                                                    self.seg: val_seg, self.depth: val_depth,
                                                    self.is_training: True})
-                ave_loss = total_loss/num_of_train_samples*batch_size
+
                 elog = 'Epoch %d metrics = %.3f ,ave_training loss = %.3f \n' % (epoch, metrics, ave_loss)
                 print(elog)
                 log.write('\n' + elog + '\n\n')
-        log.close()
-    
-    def finetune(self, train_data_path, save_path, batch_size=10, val_ratio=0.1, learning_rate=0.005, epochs=5):
-        Adam_optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-        train_Adam = Adam_optimizer.minimize(self.loss)
 
-        ckpt_path = os.path.join(save_path, 'model.ckpt')
-        saver = tf.train.Saver(max_to_keep=5, keep_checkpoint_every_n_hours=2, allow_empty=True)
-
-        leftimg_path_array = img_path_array(train_data_path[0], val_ratio, '0')
-        rightimg_path_array = img_path_array(train_data_path[1], val_ratio, '1')
-        segimg_path_array = img_path_array(train_data_path[2], val_ratio)
-        depthimg_path_array = img_path_array(train_data_path[3], val_ratio)
-
-        if val_ratio:
-            val_left = load_batch_img(leftimg_path_array[1], img_shape=(self.height, self.weight))
-            val_right = load_batch_img(rightimg_path_array[1], img_shape=(self.height, self.weight))
-            val_seg = load_batch_img(segimg_path_array[1], img_shape=(self.height, self.weight),
-                                     prepro=False, label=1)
-            val_depth = load_batch_img(depthimg_path_array[1], img_shape=(self.height, self.weight),
-                                       prepro=False, label=2)
-            
-            leftimg_path_array = leftimg_path_array[0]
-            rightimg_path_array = rightimg_path_array[0]
-            segimg_path_array = segimg_path_array[0]
-            depthimg_path_array = depthimg_path_array[0]
-        # graph = tf.get_default_graph()
-        # loss = graph.get_collection('closs')
-        # random_batch_array_index
-        num_of_train_samples = len(leftimg_path_array)
-        random_index = np.arange(num_of_train_samples)
-        np.random.shuffle(random_index)
-
-        aug_rate = 3 * num_of_train_samples
-        # augment random degree
-        ran_aug = np.around(np.random.rand(aug_rate), decimals=2)
-        # random select augment
-        ran_sel = np.around(np.random.rand(aug_rate), decimals=2)
-
-        init = tf.initializers.global_variables()
-        self.sess.run(init)
-        
-        start_time = time.time()
-        for epoch in range(1, epochs+1):
-            ran = epoch * num_of_train_samples % aug_rate
-            print('Epoch %d' % epoch)
-            print('')
-            for step in range(0, num_of_train_samples, batch_size):
-
-                batch_left = load_batch_img(leftimg_path_array,
-                                            random_index=random_index[step:step+batch_size],
-                                            img_shape=(self.height, self.weight),
-                                            ran_aug=ran_aug[ran], ran_sel=ran_sel[ran])
-                batch_right = load_batch_img(rightimg_path_array,
-                                             random_index=random_index[step:step+batch_size],
-                                             img_shape=(self.height, self.weight),
-                                             ran_aug=ran_aug[ran], ran_sel=ran_sel[ran])
-                batch_seg = load_batch_img(segimg_path_array, img_shape=(self.height, self.weight),
-                                           random_index=random_index[step:step + batch_size],
-                                           ran_aug=ran_aug[ran], ran_sel=ran_sel[ran], label=1, prepro=False)
-                batch_depth = load_batch_img(depthimg_path_array, img_shape=(self.height, self.weight),
-                                             random_index=random_index[step:step + batch_size],
-                                             ran_aug=ran_aug[ran], ran_sel=ran_sel[ran], label=2, prepro=False)
-                
-                _, loss = self.sess.run([train_Adam, self.loss],
-                                        feed_dict={self.left_input: batch_left, self.right_input: batch_right,
-                                                   self.seg_res: batch_seg, self.depth_stack: batch_depth,
-                                                   self.is_training: True})
-                print('Step %d training loss = %.3f , time = %.2f' % (step, loss, time.time() - start_time))
-                print('')
+            if ave_loss < last_loss:
+                last_loss = ave_loss
                 # save model
-                saver.save(self.sess, ckpt_path, global_step=step)
-                ran += 1
-            if val_ratio:
-                metrics = self.sess.run(self.loss,
-                                        feed_dict={self.left_input: val_left, self.right_input: val_right,
-                                                    self.seg_res: val_seg, self.depth_stack: val_depth,
-                                                    self.is_training: False})
-                print('Epoch %d metrics = %.3f ,training loss = %.3f \n' % (epoch, metrics, loss))
+                train_saver.save(self.sess, ckpt_path)
+            else:
+                p_count += 1
+                if p_count >= stop_patience:
+                    ada_learning_rate = tf.multiply(ada_learning_rate, learning_rate_dacay)
+                    self.sess.run(ada_learning_rate)
+                    p_count = 0
+
+            epoch += 1
+        log.close()
 
     def reload_SegDepthModel(self, load_path):
         meta_path = os.path.join(load_path, 'model.ckpt.meta')
         ckpt_path = os.path.join(load_path, 'model.ckpt')
         saver = tf.train.import_meta_graph(meta_path)
         saver.restore(self.sess, ckpt_path)
-
         graph = tf.get_default_graph()
-        self.left_input = graph.get_tensor_by_name('left_img:0')
-        self.right_input = graph.get_tensor_by_name('right_img:0')
-        self.seg_res = graph.get_collection('cseg_res')
-        self.depth_stack = graph.get_collection('cdepth_stack')[0]
+        self.left = graph.get_tensor_by_name('left_img:0')
+        self.right = graph.get_tensor_by_name('right_img:0')
+        self.seg = graph.get_tensor_by_name('seg_img:0')
+        self.depth = graph.get_tensor_by_name('depth_img:0')
+        self.seg_o = graph.get_collection('cseg_res')[0]
+        self.depth_o = graph.get_collection('cdepth_stack')[0]
         self.is_training = graph.get_tensor_by_name('is_training:0')
         self.loss = graph.get_collection('closs')[0]
 
-    def predict_SegDepthModel(self, left_img, right_img):
+    def predict_SegDepthModel(self, left_img, right_img, load_path):
         left_img = np.array([img_preprocess(left_img)])
         right_img = np.array([img_preprocess(right_img)])
 
-        seg, depth = self.sess.run([self.seg_res, self.depth_stack],
-                                   feed_dict={self.left_input: left_img, self.right_input: right_img,
+        self.reload_SegDepthModel(load_path)
+        seg, depth = self.sess.run([self.seg_o, self.depth_o],
+                                   feed_dict={self.left: left_img, self.right: right_img,
                                               self.is_training: False})
         return seg, depth
 
