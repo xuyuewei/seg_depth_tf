@@ -34,8 +34,8 @@ def img_preprocess(image, normalize=True, prepro=True):
 
 
 def multiclass_label_normalize(image, normalize=False):
-    # ratio gray image
-    image = (image[:,:,0]*1/3+image[:,:,1]/4+image[:,:,2]*5/12).astype(np.uint8)
+    # ratio gray and scale by 12
+    image = ((image[:,:,0]*1/3+image[:,:,1]/4+image[:,:,2]*5/12)/12).astype(np.uint8)
     # normalize image
     if normalize:
         sd = np.floor(255 / np.log2(255))
