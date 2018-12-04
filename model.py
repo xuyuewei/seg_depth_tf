@@ -105,11 +105,14 @@ class SegDepthModel:
         loss = tf.losses.huber_loss(targets, pred)
         return loss
 
-    def dice_loss(self, pred, targets):
-        smooth = 1.
+    def dice_loss(self, pred, targets, smooth = 1., depth = 4):
         # Flatten
-        pred = tf.reshape(pred, [-1])
+        pred = tf.reshape(tf.round(pred), [-1])
         targets = tf.reshape(targets, [-1])
+        
+        pred = tf.reshape(tf.one_hot(pred, depth), [-1])
+        targets = tf.reshape(tf.one_hot(targets, depth), [-1])
+        
         intersection = tf.reduce_sum(tf.multiply(targets, pred))
         loss = 1 - (2. * intersection + smooth) / (tf.reduce_sum(targets) + tf.reduce_sum(pred) + smooth)
         return loss
