@@ -22,8 +22,8 @@ def img_preprocess(image, normalize=True, prepro=True):
         image = (sd * np.log2(image + 0.0001)).astype(np.uint8)
 
         # gamma enhance contrast
-        sg = np.floor(np.power(255, 2) / 255)
-        image = np.power(image, 2) / sg
+        sg = np.floor(np.power(255, 1.8) / 255)
+        image = np.power(image, 1.8) / sg
 
     # normalize image
     if normalize:
@@ -35,7 +35,7 @@ def img_preprocess(image, normalize=True, prepro=True):
 
 def multiclass_label_normalize(image, normalize=False):
     # ratio gray and scale by 12
-    image = ((image[:,:,0]*1/3+image[:,:,1]/4+image[:,:,2]*5/12)/12).astype(np.uint8)
+    image = ((image[:, :, 0] * 1 / 3 + image[:, :, 1] / 4 + image[:, :, 2] * 5 / 12) / 12).astype(np.uint8)
     # normalize image
     if normalize:
         sd = np.floor(255 / np.log2(255))
@@ -153,26 +153,26 @@ def augment(input_img, ran_degree, ran_aug,
     input_img = cv.warpPerspective(input_img, M_perspective, (img_size[1], img_size[0]))
     '''
 
-    if ran_aug < 0.25:
+    if ran_aug < 0.3:
         # scale nad rotate by random -30~30 degree
         M_rot = cv.getRotationMatrix2D((onehalf_size[1]//2, onehalf_size[0]//2), angle*np_ran, 1)
         # input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
         input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]))
-    elif ran_aug < 0.5:
+    elif ran_aug < 0.6:
         # scale nad rotate by random 150~210 degree
         M_rot = cv.getRotationMatrix2D((onehalf_size[1]//2, onehalf_size[0]//2), 180+angle * np_ran, 1)
         # input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]), borderMode=cv.BORDER_REFLECT)
         input_img = cv.warpAffine(input_img, M_rot, (img_size[1], img_size[0]))
-    elif ran_aug < 0.75:
+    else:
         # random_crop
-        ran2 = ran_aug*4-2
+        ran2 = (ran_aug-0.6)*2.5
         ind_h = np.int(hshift_range * ran_degree)
         ind_w = np.int(wshift_range * ran2)
         input_img = input_img[ind_h:img_size[0]+ind_h, ind_w:img_size[1]+ind_w]
+        '''
     else:
         input_img = cv.resize(input_img, (img_size[1], img_size[0]), interpolation=cv.INTER_LINEAR)
         input_img = np.fliplr(input_img)
-    '''
     ran_degree = ran_degree * 0.3 + 0.7
     # random lower brightness
     input_img = (input_img * ran_degree).astype(np.uint8)
@@ -219,7 +219,6 @@ def res_block(func, bottom, filters, kernel_size, strides=1, dilation_rate=1, na
         if projection:
             short_cut = conv_block(func, short_cut, filters, 1, strides, dilation_rate, name='sconv3',
                                    reuse=reuse, reg=reg)
-            short_cut = tf.nn.elu(short_cut, name='elu')
         bottom = tf.add(bottom, short_cut, 'add')
 
         return bottom
@@ -232,6 +231,7 @@ def SPP_branch(func, bottom, pool_size, filters, kernel_size, strides=1, dilatio
         bottom = conv_block(func, bottom, filters, kernel_size, strides, dilation_rate, 'conv', reuse, reg,
                             apply_bn, apply_relu)
         print('average_pooling_output:'+str(bottom.shape))
+
         bottom = conv_block(tf.layers.conv2d_transpose, bottom, filters, kernel_size, strides=pool_size,
                             name='spp_deconv', reuse=reuse, reg=reg)
         print('deconv_output:' + str(bottom.shape))

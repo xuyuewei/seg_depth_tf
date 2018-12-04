@@ -16,8 +16,8 @@ class SegDepthModel:
     def build_SegDepthModel(self):
         self.left = tf.placeholder(tf.float32, shape=[None, self.height, self.weight, 3], name='left_img')
         self.right = tf.placeholder(tf.float32, shape=[None, self.height, self.weight, 3], name='right_img')
-        self.seg = tf.placeholder(tf.float32, shape=[None, self.height, self.weight, 3], name='seg_img')
-        self.depth = tf.placeholder(tf.float32, shape=[None, self.height, self.weight, 3], name='depth_img')
+        self.seg = tf.placeholder(tf.float32, shape=[None, self.height, self.weight], name='seg_img')
+        self.depth = tf.placeholder(tf.float32, shape=[None, self.height, self.weight], name='depth_img')
         self.is_training = tf.placeholder(tf.bool, name='is_training')
 
         # tf.add_to_collection("left", left)
@@ -26,39 +26,30 @@ class SegDepthModel:
         # tf.add_to_collection("depth", depth)
         
         # self.image_size_tf = tf.shape(self.left)[1:3]
-
-        print('conv4_left:')
-        conv4_left = self.CNN_res(self.left, filters=[32, 64], name='cnnleft')
-        print('')
-    
         print('u_left:')
-        u_left = self.Unet(conv4_left, 32)
-        print('')
-
-        print('conv4_right:')
-        conv4_right = self.CNN_res(self.right, filters=[32, 64], reuse=True, name='cnnleft')
+        u_left = self.Unet(self.left, 32)
         print('')
 
         print('u_right:')
-        u_right = self.Unet(conv4_right, 32, reuse=True)
+        u_right = self.Unet(self.right, 32, reuse=True)
         print('')
 
-        cnn_u = self.CNN_res(u_right, filters=[128, 64], name='cnn_u')
+        cnn_u = self.CNN_res(u_left, filters=[64, 128, 64], name='cnn_u')
         cnn_u = conv_block(tf.layers.conv2d, cnn_u, 32, 1, strides=1, dilation_rate=1, name='cnn_u1', reg=self.reg)
         print('seg output:')
-        seg_res = conv_block(tf.layers.conv2d, cnn_u, 3, 1, strides=1, dilation_rate=1, name='seg_res', reg=self.reg)
+        seg_res = conv_block(tf.layers.conv2d, cnn_u, 1, 1, strides=1, dilation_rate=1, name='seg_res', reg=self.reg)
         print(seg_res.shape)
         print('')
         
         print('merge:')
         merge = self.lrMerge(u_left, u_right)
         print('')
-
-        depth_cnn = self.CNN_res(merge, filters=[128, 64], name='depth_spp')
+        merge_spp = self.SPP(merge, name='merge_spp')
+        depth_cnn = self.CNN_res(merge_spp, filters=[64, 128, 64], name='depth_spp')
         depth_cnn = conv_block(tf.layers.conv2d, depth_cnn, 32, 1, strides=1, dilation_rate=1, name='depth_cnn',
                                reg=self.reg)
         print('depth output:')
-        depth_res = conv_block(tf.layers.conv2d, depth_cnn, 3, 1, strides=1, dilation_rate=1, name='depth_cnn1',
+        depth_res = conv_block(tf.layers.conv2d, depth_cnn, 1, 1, strides=1, dilation_rate=1, name='depth_cnn1',
                                reg=self.reg)
         print(depth_res.shape)
         print('')
@@ -70,7 +61,7 @@ class SegDepthModel:
         # 0.5 * self.mse(depth_stack, self.depth)
         self.loss = 0.5 * self.huber(depth_res, self.depth) + \
                     0.5 * self.smooth_l1_loss(depth_res, self.depth) + \
-                    0.5 * self.rmse(seg_res, self.seg) + 0.5 * self.mae(seg_res, self.seg)
+                    0.5 * self.dice_loss(seg_res, self.seg) + 0.5 * self.mae(seg_res, self.seg)
             
         tf.add_to_collection("closs", self.loss)
 
@@ -105,14 +96,14 @@ class SegDepthModel:
         loss = tf.losses.huber_loss(targets, pred)
         return loss
 
-    def dice_loss(self, pred, targets, smooth = 1., depth = 4):
+    def dice_loss(self, pred, targets, smooth=1., depth=4):
         # Flatten
         pred = tf.reshape(tf.round(pred), [-1])
         targets = tf.reshape(targets, [-1])
-        
-        pred = tf.reshape(tf.one_hot(pred, depth), [-1])
-        targets = tf.reshape(tf.one_hot(targets, depth), [-1])
-        
+
+        pred = tf.reshape(tf.one_hot(tf.to_int32(pred), depth), [-1])
+        targets = tf.reshape(tf.one_hot(tf.to_int32(targets), depth), [-1])
+
         intersection = tf.reduce_sum(tf.multiply(targets, pred))
         loss = 1 - (2. * intersection + smooth) / (tf.reduce_sum(targets) + tf.reduce_sum(pred) + smooth)
         return loss
@@ -163,7 +154,7 @@ class SegDepthModel:
         print(bottom.shape)
         with tf.variable_scope(name):
             branches = []
-            for i, p in enumerate([16, 8, 4]):
+            for i, p in enumerate([16, 8, 4, 2]):
                 branches.append(SPP_branch(tf.layers.conv2d, bottom, p, 32, 1, dilation_rate=1,
                                            name='branch_%d' % (i+1), reuse=reuse,
                                            reg=self.reg))
@@ -185,7 +176,7 @@ class SegDepthModel:
         with tf.variable_scope('Unet'):
             downconv = []
             for i in range(4):
-                bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool00'+str(i))
+                bottom = tf.layers.max_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool00'+str(i))
                 bottom = conv_block(tf.layers.conv2d, bottom, filters, 1, strides, dilation_rate,
                                     name='dconv0'+str(i), reuse=reuse)
                 bottom = res_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
@@ -196,13 +187,12 @@ class SegDepthModel:
                 filters = filters*2
                 print(bottom.shape)
             
-            bottom = tf.layers.average_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool01'+'center')
+            bottom = tf.layers.max_pooling2d(bottom, pool_size, pool_size, 'same', name='avg_pool01'+'center')
             center = conv_block(tf.layers.conv2d, bottom, filters, kernel_size, strides, dilation_rate,
                                 name='cconv0'+'center', reuse=reuse)
             center = res_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
                                name='dconv1center', reuse=reuse)
-            center = res_block(tf.layers.conv2d, center, filters, kernel_size, strides, dilation_rate,
-                               name='dconv2center', reuse=reuse)
+
             for i in range(4):
                 filters = filters//2
                 center = conv_block(tf.layers.conv2d_transpose, center, filters, kernel_size, 2, name='dconv'+str(i),
@@ -259,12 +249,12 @@ class SegDepthModel:
         random_index = np.arange(num_of_train_samples)
         np.random.shuffle(random_index)
 
-        learning_rate_dacay = 0.5
+        learning_rate_dacay = 0.8
         ada_learning_rate = tf.Variable(learning_rate)
 
         if fine_tune:
-            AdagradOptimizer = tf.train.AdagradOptimizer(learning_rate=ada_learning_rate)
-            train_optimizer = AdagradOptimizer.minimize(self.loss)
+            GradientDescentOptimizer = tf.train.GradientDescentOptimizer(learning_rate=ada_learning_rate)
+            train_optimizer = GradientDescentOptimizer.minimize(self.loss)
             self.sess.run(tf.initializers.global_variables())
             self.reload_SegDepthModel(save_path)
         else:
@@ -287,7 +277,7 @@ class SegDepthModel:
         p_count = 0
         while epoch <= epochs:
             ran = epoch * num_of_train_samples % aug_rate
-            print('Epoch %d ...' % epoch)
+            print('Epoch %d training...' % epoch)
             print('')
             total_loss = 0
             for step in range(0, num_of_train_samples, batch_size):
@@ -329,8 +319,7 @@ class SegDepthModel:
 
             if metric < last_metric:
                 last_metric = metric
-                if epochs - epoch < 2:
-                    epochs += 3
+                epochs += 1
             if ave_loss < last_loss:
                 last_loss = ave_loss
                 # save model
@@ -339,8 +328,11 @@ class SegDepthModel:
                 p_count += 1
                 if p_count >= stop_patience:
                     ada_learning_rate = tf.multiply(ada_learning_rate, learning_rate_dacay)
-                    print('Adjust learning rate....%3f' % self.sess.run(ada_learning_rate))
+                    alr = self.sess.run(ada_learning_rate)
+                    print('Adjust learning rate....%3f' % alr)
                     p_count = 0
+                    if alr < 1e-6:
+                        break
 
             epoch += 1
         log.close()
