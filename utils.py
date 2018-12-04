@@ -34,6 +34,8 @@ def img_preprocess(image, normalize=True, prepro=True):
 
 
 def multiclass_label_normalize(image, normalize=False):
+    # ratio gray image
+    image = (image[:,:,0]*1/3+image[:,:,1]/4+image[:,:,2]*5/12).astype(np.uint8)
     # normalize image
     if normalize:
         sd = np.floor(255 / np.log2(255))
@@ -41,6 +43,8 @@ def multiclass_label_normalize(image, normalize=False):
     return image
 
 def reg_label_normalize(image, normalize=False):
+    # gray image
+    image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     # normalize image
     if normalize:
         image = np.around((np.log2(image + 0.0001)), decimals=2)
